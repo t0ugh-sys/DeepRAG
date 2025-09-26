@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DeepRAG-Milvus</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>DeepRAG-Milvus</h1>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input id="ns" type="text" placeholder="Namespace" style="width:140px" />
+          <input id="apikey" type="password" placeholder="API Key (可选)" style="width:200px" />
+          <button id="btnCreateNS">创建</button>
+          <button id="btnClearNS">清空</button>
+          <button id="btnDeleteNS" class="danger">删除</button>
+          <div class="status" id="status">Checking health...</div>
+        </div>
+      </header>
+
+      <section class="chat">
+        <div class="messages" id="messages"></div>
+        <div class="input">
+          <input id="question" type="text" placeholder="输入你的问题..." />
+          <button id="askBtn">发送</button>
+        </div>
+      </section>
+
+      <aside class="sources">
+        <h3>引用片段</h3>
+        <div id="sources"></div>
+        <div class="doc-list">
+          <div style="display:flex;align-items:center;gap:8px;margin:8px 0;">
+            <strong class="muted">已入库路径</strong>
+            <button id="refreshDocs">刷新</button>
+          </div>
+          <ul id="paths"></ul>
+        </div>
+        <h3 style="margin-top:16px">文档管理</h3>
+        <div class="doc-mgr">
+          <input id="docPath" type="text" placeholder="文档路径(标识) 例如 data/docs/sample.txt" />
+          <input id="docFile" type="file" accept=".txt,.md,.pdf" />
+          <textarea id="docText" placeholder="或直接粘贴文本(二选一)"></textarea>
+          <div class="doc-actions">
+            <button id="uploadBtn">上传/入库</button>
+            <button id="deleteBtn" class="danger">删除该文档</button>
+          </div>
+          <div id="docMsg" class="muted"></div>
+        </div>
+      </aside>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/web/app.js"></script>
+  </body>
+  </html>
+

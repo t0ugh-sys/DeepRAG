@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Envs
+.env
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# Data & Index
+data/index/
+# 可根据需要决定是否忽略原始文档：默认不忽略 docs，便于示例
+# data/docs/
+
+# Logs
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Envs
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Data / Index / Logs
+data/index/
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
