@@ -7,34 +7,49 @@
     <link rel="stylesheet" href="/web/styles.css" />
   </head>
   <body>
-    <div class="container">
-      <header>
+    <div class="container layout-3col">
+      <header class="app-header">
         <h1>DeepRAG-Milvus</h1>
         <div style="display:flex;align-items:center;gap:8px;">
           <input id="ns" type="text" placeholder="Namespace" style="width:140px" />
           <input id="apikey" type="password" placeholder="API Key (可选)" style="width:200px" />
-          <button id="btnCreateNS">创建</button>
-          <button id="btnClearNS">清空</button>
-          <button id="btnDeleteNS" class="danger">删除</button>
+          <input id="model" type="text" placeholder="模型(可选，覆盖服务端)" style="width:220px" />
+          <button class="btn" id="themeBtn" title="切换主题">主题</button>
+          <button class="btn" id="exportBtn" title="导出对话">导出</button>
+          <button class="btn" id="copyBtn" title="复制最新回答">复制</button>
+          <button class="btn danger" id="clearConvBtn" title="清空会话">清空</button>
+          <div class="divider"></div>
+          <button class="btn subtle" id="btnCreateNS">创建</button>
+          <button class="btn subtle" id="btnClearNS">清空NS</button>
+          <button class="btn danger subtle" id="btnDeleteNS">删除</button>
           <div class="status" id="status">Checking health...</div>
         </div>
       </header>
 
-      <section class="chat">
-        <div class="messages" id="messages"></div>
-        <div class="input">
-          <input id="question" type="text" placeholder="输入你的问题..." />
-          <button id="askBtn">发送</button>
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="muted" style="font-weight:600">分组/示例</div>
         </div>
+        <ul class="conv-list" id="convList">
+          <!-- 预留：会话列表占位 -->
+        </ul>
+      </aside>
+
+      <section class="chat main">
+        <div class="messages" id="messages"></div>
+        <div class="typing" id="typing" style="display:none;">正在生成...</div>
       </section>
 
-      <aside class="sources">
-        <h3>引用片段</h3>
+      <aside class="sources right-panel" id="sourcesPanel">
+        <div class="aside-header">
+          <h3>引用片段</h3>
+          <button class="btn subtle" id="toggleSources">折叠</button>
+        </div>
         <div id="sources"></div>
         <div class="doc-list">
           <div style="display:flex;align-items:center;gap:8px;margin:8px 0;">
             <strong class="muted">已入库路径</strong>
-            <button id="refreshDocs">刷新</button>
+            <button class="btn" id="refreshDocs">刷新</button>
           </div>
           <ul id="paths"></ul>
         </div>
@@ -44,12 +59,21 @@
           <input id="docFile" type="file" accept=".txt,.md,.pdf" />
           <textarea id="docText" placeholder="或直接粘贴文本(二选一)"></textarea>
           <div class="doc-actions">
-            <button id="uploadBtn">上传/入库</button>
-            <button id="deleteBtn" class="danger">删除该文档</button>
+            <button class="btn" id="uploadBtn">上传/入库</button>
+            <button class="btn danger" id="deleteBtn">删除该文档</button>
           </div>
           <div id="docMsg" class="muted"></div>
         </div>
       </aside>
+    </div>
+
+    <!-- 底部输入栏：固定 -->
+    <div class="composer">
+      <div class="composer-inner">
+        <input id="model" type="text" placeholder="模型(可选，覆盖服务端)" />
+        <input id="question" type="text" placeholder="输入你的问题..." />
+        <button class="btn primary" id="askBtn">发送</button>
+      </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>

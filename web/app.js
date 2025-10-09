@@ -2,6 +2,7 @@ const $ = (sel) => document.querySelector(sel);
 const messagesEl = $('#messages');
 const sourcesEl = $('#sources');
 const statusEl = $('#status');
+let conversation = [];
 
 function commonHeaders() {
   const key = $('#apikey').value.trim();
@@ -55,15 +56,21 @@ function buildHighlighter(question) {
 
 async function ask(question) {
   appendMsg('user', question);
+  // 记录到历史
+  conversation.push({ role: 'user', content: question, ts: Date.now() });
   const highlight = buildHighlighter(question);
+  // UI: loading
+  $('#askBtn').disabled = true;
+  $('#typing').style.display = '';
   const ctrl = new AbortController();
   const res = await fetch(nsParam('/ask_stream'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...commonHeaders() },
-    body: JSON.stringify({ question, top_k: 4 }),
+    body: JSON.stringify({ question, top_k: 4, model: ($('#model')?.value || '').trim() || undefined }),
     signal: ctrl.signal
   });
   let answer = '';
+  const srcPayloads = [];
   // progressive render: create a live message element
   const live = document.createElement('div');
   live.className = 'msg assistant';
@@ -81,6 +88,7 @@ async function ask(question) {
         const dataLine = line.split('\n').find(x => x.startsWith('data: '));
         if (dataLine) {
           const payload = JSON.parse(dataLine.slice(6));
+          srcPayloads.push(payload);
           const el = document.createElement('div');
           el.className = 'source-item';
           el.innerHTML = `<div class="muted">${payload.path} #${payload.chunk_id} · score ${payload.score.toFixed(4)}</div><div>${highlight(payload.snippet)}</div>`;
@@ -99,6 +107,12 @@ async function ask(question) {
       }
     }
   }
+  // 保存助手回答到历史
+  conversation.push({ role: 'assistant', content: answer, ts: Date.now(), sources: srcPayloads });
+  saveConversation();
+  // UI: end loading
+  $('#askBtn').disabled = false;
+  $('#typing').style.display = 'none';
 }
 
 $('#askBtn').addEventListener('click', async () => {
@@ -141,8 +155,15 @@ function loadPrefs() {
   try {
     const ns = localStorage.getItem('ns');
     const key = localStorage.getItem('apikey');
+    const model = localStorage.getItem('model');
+    const theme = localStorage.getItem('theme') || 'dark';
+    const conv = localStorage.getItem('conv');
     if (ns) $('#ns').value = ns;
     if (key) $('#apikey').value = key;
+    if (model) $('#model').value = model;
+    conversation = conv ? JSON.parse(conv) : [];
+    applyTheme(theme);
+    renderConversation();
   } catch {}
 }
 
@@ -150,11 +171,13 @@ function savePrefs() {
   try {
     localStorage.setItem('ns', $('#ns').value.trim());
     localStorage.setItem('apikey', $('#apikey').value.trim());
+    localStorage.setItem('model', ($('#model')?.value || '').trim());
   } catch {}
 }
 
 $('#ns').addEventListener('change', () => { savePrefs(); checkHealth(); });
 $('#apikey').addEventListener('change', () => { savePrefs(); checkHealth(); });
+$('#model').addEventListener('change', () => { savePrefs(); });
 loadPrefs();
 checkHealth();
 
@@ -229,4 +252,98 @@ async function exportPath(p) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// 复制最新回答与清空会话
+$('#copyBtn').addEventListener('click', async () => {
+  const last = [...document.querySelectorAll('.messages .msg.assistant')].pop();
+  if (!last) return;
+  const text = last.textContent || '';
+  try { await navigator.clipboard.writeText(text); alert('已复制'); } catch { }
+});
+
+$('#clearConvBtn').addEventListener('click', () => {
+  if (!confirm('确认清空会话？')) return;
+  conversation = [];
+  saveConversation();
+  renderConversation();
+  sourcesEl.innerHTML = '';
+});
+
+// 折叠引用区
+$('#toggleSources').addEventListener('click', () => {
+  const panel = document.getElementById('sourcesPanel');
+  panel.classList.toggle('collapsed');
+  document.getElementById('toggleSources').textContent = panel.classList.contains('collapsed') ? '展开' : '折叠';
+});
+
+// 对话历史渲染/保存/导出
+function renderConversation() {
+  messagesEl.innerHTML = '';
+  for (const m of conversation) {
+    const useMarkdown = m.role === 'assistant';
+    appendMsg(m.role, m.content, useMarkdown);
+  }
+}
+
+function saveConversation() {
+  try { localStorage.setItem('conv', JSON.stringify(conversation)); } catch {}
+}
+
+function exportConversationJSON() {
+  const blob = new Blob([JSON.stringify({ items: conversation }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'conversation.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function toMarkdown(conv) {
+  const lines = [];
+  lines.push('# Conversation Export');
+  for (const m of conv) {
+    const time = new Date(m.ts || Date.now()).toISOString();
+    lines.push(`\n## ${m.role} | ${time}`);
+    lines.push('');
+    lines.push(m.role === 'assistant' ? (m.content || '') : `> ${m.content || ''}`);
+    if (m.sources && m.sources.length) {
+      lines.push('\n### sources');
+      for (const s of m.sources) {
+        lines.push(`- ${s.path} #${s.chunk_id} (score ${Number(s.score).toFixed(4)})`);
+      }
+    }
+  }
+  return lines.join('\n');
+}
+
+function exportConversationMarkdown() {
+  const md = toMarkdown(conversation);
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'conversation.md';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+$('#exportBtn').addEventListener('click', () => {
+  const choice = window.prompt('导出格式: 输入 json 或 md', 'json');
+  if (!choice) return;
+  if (choice.toLowerCase().startsWith('m')) exportConversationMarkdown();
+  else exportConversationJSON();
+});
+
+// 主题切换
+function applyTheme(theme) {
+  const isLight = theme === 'light';
+  document.body.classList.toggle('light', isLight);
+  try { localStorage.setItem('theme', isLight ? 'light' : 'dark'); } catch {}
+}
+
+$('#themeBtn').addEventListener('click', () => {
+  const now = document.body.classList.contains('light') ? 'dark' : 'light';
+  applyTheme(now);
+});
 

@@ -156,7 +156,8 @@ def build_index(docs: List[Dict[str, Any]], settings: Settings, index_dir: str) 
                 secure=settings.milvus_secure,
             )
             dim = embeddings.shape[1]
-            collection_name = settings.milvus_collection
+            # 与服务端保持一致：集合名加命名空间后缀，默认使用 Settings.default_namespace
+            collection_name = f"{settings.milvus_collection}_{settings.default_namespace}"
             fields = [
                 FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
                 FieldSchema(name="path", dtype=DataType.VARCHAR, max_length=512),

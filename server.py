@@ -34,6 +34,7 @@ class AskRequest(BaseModel):
     top_k: int | None = None
     rerank_enabled: bool | None = None
     rerank_top_n: int | None = None
+    model: str | None = None
 
 
 class SourceItem(BaseModel):
@@ -151,7 +152,7 @@ def ask(req: AskRequest, x_api_key: str | None = None, namespace: str | None = N
     assert pipeline is not None
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
-    answer, recs = local.ask(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n)
+    answer, recs = local.ask(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n, req.model)
     sources: List[SourceItem] = []
     for r in recs:
         sources.append(SourceItem(
@@ -205,7 +206,7 @@ def ask_stream(req: AskRequest, x_api_key: str | None = None, namespace: str | N
     assert pipeline is not None
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
-    gen, recs = local.ask_stream(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n)
+    gen, recs = local.ask_stream(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n, req.model)
 
     def sse():  # noqa: ANN202
         yield f"event: meta\ndata: {len(recs)}\n\n"
@@ -239,35 +240,39 @@ def upsert_doc(req: UpsertDocRequest | None = None, file: UploadFile = File(None
     assert pipeline is not None
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
-    final_path: str | None = None
-    text: str | None = None
-    if req is not None and req.path:
-        final_path = req.path
-        text = req.text
-    elif file is not None and path is not None:
-        final_path = path
-        raw = file.file.read()
-        name = (file.filename or '').lower()
-        if name.endswith('.pdf'):
-            try:
-                from pdfminer.high_level import extract_text
+    try:
+        final_path: str | None = None
+        text: str | None = None
+        if req is not None and req.path:
+            final_path = req.path
+            text = req.text
+        elif file is not None and path is not None:
+            final_path = path
+            raw = file.file.read()
+            name = (file.filename or '').lower()
+            if name.endswith('.pdf'):
+                try:
+                    from pdfminer_high_level import extract_text  # type: ignore
+                except Exception:
+                    from pdfminer.high_level import extract_text  # fallback
                 # 临时存盘再解析，避免流处理复杂度
                 import tempfile
                 with tempfile.NamedTemporaryFile(suffix='.pdf', delete=True) as tmp:
                     tmp.write(raw)
                     tmp.flush()
                     text = extract_text(tmp.name)
-            except Exception as e:  # pragma: no cover
-                return JSONResponse({"ok": False, "error": f"PDF 解析失败: {e}"}, status_code=400)
+            else:
+                try:
+                    text = raw.decode("utf-8", errors="ignore")
+                except Exception:
+                    text = ""
         else:
-            try:
-                text = raw.decode("utf-8", errors="ignore")
-            except Exception:
-                text = ""
-    else:
-        return JSONResponse({"ok": False, "error": "need JSON{path,text} or multipart file+path"}, status_code=400)
-    added = local.add_document(final_path, text or "")
-    return JSONResponse({"ok": True, "added_chunks": added})
+            return JSONResponse({"ok": False, "error": "need JSON{path,text} or multipart file+path"}, status_code=400)
+        added = local.add_document(final_path, text or "")
+        return JSONResponse({"ok": True, "added_chunks": added})
+    except Exception as e:
+        # 在 FAISS 模式下，add_document 会抛出错误；改为返回 400 与提示
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 
 @app.delete("/docs")
@@ -276,8 +281,11 @@ def delete_doc(path: str, x_api_key: str | None = None, namespace: str | None = 
     assert pipeline is not None
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
-    deleted = local.delete_document(path)
-    return JSONResponse({"ok": True, "deleted": deleted})
+    try:
+        deleted = local.delete_document(path)
+        return JSONResponse({"ok": True, "deleted": deleted})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 
 @app.get("/docs/paths")
@@ -296,7 +304,9 @@ def export_by_path(path: str, namespace: str | None = None) -> JSONResponse:  # 
         ns = namespace or settings.default_namespace
         local = RAGPipeline(settings, ns)
         coll = local.store.collection  # type: ignore[attr-defined]
-        recs = coll.query(expr=f"path == '{path.replace("'", "\\'")}'", output_fields=["path", "chunk_id", "text"], limit=10000)
+        escaped = path.replace("'", "\\'")
+        expr = "path == '" + escaped + "'"
+        recs = coll.query(expr=expr, output_fields=["path", "chunk_id", "text"], limit=10000)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     return JSONResponse({"ok": True, "path": path, "chunks": recs})

@@ -1,6 +1,21 @@
 import os
 from dataclasses import dataclass
 
+# 尝试加载 .env 与 .env.local（若存在）
+try:  # pragma: no cover
+    from dotenv import load_dotenv
+
+    # 优先加载 .env.local，其次加载 .env；不覆盖已存在的进程环境变量
+    for _fname in (".env.local", ".env"):
+        try:
+            if os.path.exists(_fname):
+                load_dotenv(dotenv_path=_fname, override=False)
+        except Exception:
+            pass
+except Exception:
+    # 若未安装 python-dotenv，跳过，不影响运行
+    pass
+
 
 @dataclass
 class Settings:

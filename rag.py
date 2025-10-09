@@ -31,6 +31,7 @@ class VectorStore:
             raise FileNotFoundError("未找到 meta.jsonl，请先运行 ingest 构建索引")
         self.texts: List[str] = []
         self.metas: List[Dict[str, Any]] = []
+        self.meta_path = meta_path
         with open(meta_path, "r", encoding="utf-8") as f:
             for line in f:
                 rec = json.loads(line)
@@ -60,6 +61,7 @@ class VectorStore:
                 self.backend = "faiss"
         if self.collection is None:
             faiss_path = os.path.join(os.path.dirname(meta_path), "faiss.index")
+            self.faiss_path = faiss_path
             if not os.path.exists(faiss_path):
                 raise FileNotFoundError("未找到 Milvus 集合且缺少 faiss.index，请先运行 ingest 构建索引")
             try:
@@ -98,8 +100,41 @@ class VectorStore:
         return results
 
     def add_document(self, path: str, text: str) -> int:
-        if self.backend != "milvus" or self.collection is None:
-            raise RuntimeError("FAISS 模式下暂不支持在线新增文档，请通过 ingest 重建索引")
+        # 支持两种后端的在线新增
+        if self.backend == "milvus" and self.collection is not None:
+            chunks = split_text(text)
+            if not chunks:
+                return 0
+            embeddings = self.embedder.encode(chunks, normalize_embeddings=True)
+            embeddings = np.array(embeddings).astype("float32")
+            paths = [path] * len(chunks)
+            chunk_ids = list(range(len(chunks)))
+            self.collection.insert([paths, chunk_ids, chunks, embeddings])
+            self.collection.flush()
+            return len(chunks)
+
+        # FAISS 本地模式：动态追加并写回索引与 meta
+        if self.backend == "faiss" and self.faiss_index is not None:
+            chunks = split_text(text)
+            if not chunks:
+                return 0
+            import faiss  # type: ignore
+            embeddings = self.embedder.encode(chunks, normalize_embeddings=True)
+            vecs = np.array(embeddings).astype("float32")
+            self.faiss_index.add(vecs)
+            # 写回索引文件
+            faiss.write_index(self.faiss_index, getattr(self, "faiss_path", os.path.join(os.path.dirname(self.meta_path), "faiss.index")))
+            # 追加 meta.jsonl 与内存映射
+            with open(self.meta_path, "a", encoding="utf-8") as f:
+                for idx, chunk in enumerate(chunks):
+                    meta = {"path": path, "chunk_id": idx, "chunk_size": len(chunk)}
+                    rec = {"meta": meta, "text": chunk}
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                    self.metas.append(meta)
+                    self.texts.append(chunk)
+            return len(chunks)
+
+        raise RuntimeError("当前向量后端未就绪，无法新增文档")
         chunks = split_text(text)
         if not chunks:
             return 0
@@ -114,7 +149,8 @@ class VectorStore:
     def delete_document(self, path: str) -> int:
         if self.backend != "milvus" or self.collection is None:
             raise RuntimeError("FAISS 模式下暂不支持在线删除文档，请通过 ingest 重建索引")
-        expr = f"path == '{path.replace("'", "\\'")}'"
+        escaped = path.replace("'", "\\'")
+        expr = "path == '" + escaped + "'"
         res = self.collection.delete(expr)
         self.collection.flush()
         cnt = 0
@@ -189,7 +225,7 @@ class RAGPipeline:
             except Exception:
                 self.reranker = None
 
-    def ask(self, question: str, top_k: int | None = None, rerank_enabled: bool | None = None, rerank_top_n: int | None = None) -> Tuple[str, List[RetrievedChunk]]:
+    def ask(self, question: str, top_k: int | None = None, rerank_enabled: bool | None = None, rerank_top_n: int | None = None, model: str | None = None) -> Tuple[str, List[RetrievedChunk]]:
         k = top_k or self.settings.top_k
         recs = self.store.search(question, k)
         # 可选重排
@@ -203,14 +239,14 @@ class RAGPipeline:
             recs = sorted(recs, key=lambda x: x.score, reverse=True)[: top_n]
         prompt = build_prompt(question, recs)
         resp = self.client.chat.completions.create(
-            model=self.settings.llm_model,
+            model=(model or self.settings.llm_model),
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
         )
         answer = resp.choices[0].message.content or ""
         return answer, recs
 
-    def ask_stream(self, question: str, top_k: int | None = None, rerank_enabled: bool | None = None, rerank_top_n: int | None = None):  # noqa: ANN001
+    def ask_stream(self, question: str, top_k: int | None = None, rerank_enabled: bool | None = None, rerank_top_n: int | None = None, model: str | None = None):  # noqa: ANN001
         """返回(生成器, 检索片段)。生成器逐块产出模型文本。"""
         k = top_k or self.settings.top_k
         recs = self.store.search(question, k)
@@ -226,7 +262,7 @@ class RAGPipeline:
 
         def _gen():  # noqa: ANN202
             stream = self.client.chat.completions.create(
-                model=self.settings.llm_model,
+                model=(model or self.settings.llm_model),
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
                 stream=True,

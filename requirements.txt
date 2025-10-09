@@ -10,4 +10,5 @@ PyYAML==6.0.2
 markdown==3.6
 unstructured==0.15.7
 pdfminer.six==20231228
+pymilvus==2.4.7
 

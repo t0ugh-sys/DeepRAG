@@ -2,7 +2,7 @@
 
 ### 功能
 
-- 文档入库（ingest）：支持 `.txt`、`.md`、`.pdf`，自动切分、向量化、建立 FAISS 索引
+- 文档入库（ingest）：支持 `.txt`、`.md`、`.pdf`，自动切分、向量化、默认建立 FAISS 索引（如配置了 Milvus 则优先写入 Milvus）
 - 检索增强生成（RAG）：相似检索 + 提示词拼接
 - 大模型调用：支持 OpenAI 兼容接口（可自定义 `base_url` 和 `api_key`）
 - FastAPI 服务：`POST /ask` 提问，返回答案与引用来源
@@ -41,6 +41,21 @@
    $env:RAG_MODEL = "gpt-4o-mini"
    ```
 
+也可以在项目根目录新建 `.env` 或 `.env.local` 文件（不覆盖系统环境变量），例如：
+
+```
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=http://localhost:11434/v1
+RAG_MODEL=qwen2.5:14b-instruct
+RAG_TOP_K=4
+VECTOR_BACKEND=auto   # auto|milvus|faiss
+MILVUS_HOST=127.0.0.1
+MILVUS_PORT=19530
+MILVUS_COLLECTION=rag_chunks
+RAG_NAMESPACE=default
+RAG_API_KEY=           # 若设置则服务端要求请求头 X-API-Key
+```
+
 3) 准备待入库文档：将文件放入 `data/docs` 目录（不存在会自动创建）。支持 `.txt`、`.md`、`.pdf`。
 
 ### 文档入库（构建索引）
@@ -49,7 +64,7 @@
 python ingest.py --docs_dir data/docs --index_dir data/index --chunk_size 800 --chunk_overlap 120
 ```
 
-运行完成后，会在 `data/index` 下生成 `faiss.index` 和 `meta.jsonl`。
+运行完成后，会在 `data/index` 下生成 `faiss.index` 和 `meta.jsonl`。若已配置 Milvus，向量会优先写入 Milvus 集合：`{MILVUS_COLLECTION}_{RAG_NAMESPACE}`。
 
 ### 启动服务
 
@@ -79,6 +94,22 @@ $env:OPENAI_API_KEY = "sk-xxx"
 $env:OPENAI_BASE_URL = "http://localhost:11434/v1"  # 示例
 $env:RAG_MODEL = "qwen2.5:14b-instruct"             # 示例
 ```
+
+### Milvus 使用说明（可选）
+
+1) 安装并启动 Milvus（standalone）：参考官方文档。
+
+2) 在 `.env` 中设置：
+
+```
+VECTOR_BACKEND=milvus
+MILVUS_HOST=127.0.0.1
+MILVUS_PORT=19530
+MILVUS_COLLECTION=rag_chunks
+RAG_NAMESPACE=default
+```
+
+3) 构建索引时会自动创建/覆盖集合并写入分片；服务端检索时若 Milvus 连接失败会自动回退到本地 FAISS。
 
 ### 常见问题
 
