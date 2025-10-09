@@ -58,3 +58,8 @@ body.light .msg.user { color: #315efb; }
 body.light .hl { background: #ffef9c; color: #000; }
 body.light .btn { background: #f3f5ff; color: #1b1f2a; border-color: #d7def5; }
 body.light .btn:hover { background: #e8edff; }
+
+/* 代码块复制与耗时徽章 */
+.badge { display: inline-block; padding: 2px 6px; font-size: 12px; border-radius: 6px; background: #2e5bea; color: #fff; margin-left: 6px; }
+.copy-btn { float: right; font-size: 12px; padding: 2px 6px; border-radius: 6px; background: #0f1524; border: 1px solid #27324a; color: #b7c0d9; cursor: pointer; }
+.copy-btn:hover { background: #16203a; }
