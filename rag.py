@@ -9,6 +9,7 @@ from openai import OpenAI
 from pymilvus import connections, Collection
 from ingest import split_text
 from config import Settings
+from rank_bm25 import BM25Okapi  # type: ignore
 
 try:
     from FlagEmbedding import FlagReranker  # type: ignore
@@ -38,6 +39,9 @@ class VectorStore:
                 self.texts.append(rec["text"]) 
                 self.metas.append(rec["meta"]) 
         self.embedder = SentenceTransformer(embedding_model)
+        # BM25 语料（按词分）
+        self._bm25_tokenized = [self._tokenize(t) for t in self.texts]
+        self._bm25 = BM25Okapi(self._bm25_tokenized) if self._bm25_tokenized else None
 
         # 尝试使用 Milvus，否则回退到 FAISS
         self.collection = None
@@ -97,7 +101,70 @@ class VectorStore:
             if idx == -1:
                 continue
             results.append(RetrievedChunk(text=self.texts[idx], score=float(score), meta=self.metas[idx]))
-        return results
+
+        # 可选 BM25 融合
+        return self._fuse_with_bm25(query, results, top_k)
+
+    # --- 辅助：BM25 + MMR 融合 ---
+    def _tokenize(self, s: str) -> list[str]:
+        import re
+        return [w for w in re.split(r"\W+", s.lower()) if w]
+
+    def _fuse_with_bm25(self, query: str, vec_results: List[RetrievedChunk], top_k: int) -> List[RetrievedChunk]:
+        settings = Settings()
+        recs = list(vec_results)
+        if settings.bm25_enabled and self._bm25 is not None:
+            tokens = self._tokenize(query)
+            bm25_scores = self._bm25.get_scores(tokens)
+            # 归一化分数
+            import math
+            def norm(x: float) -> float:
+                return 0.0 if math.isnan(x) else float(x)
+            bm25_max = max(bm25_scores) if len(bm25_scores) else 1.0
+            fused: dict[int, float] = {}
+            for i, r in enumerate(recs):
+                bm = (bm25_scores[i] / (bm25_max or 1.0)) if i < len(bm25_scores) else 0.0
+                fused[i] = settings.vec_weight * r.score + settings.bm25_weight * norm(bm)
+                r.score = fused[i]
+            # 得分阈值过滤
+            if settings.score_threshold > 0:
+                recs = [r for r in recs if r.score >= settings.score_threshold]
+            recs = sorted(recs, key=lambda x: x.score, reverse=True)
+
+        # MMR 多样性采样
+        if len(recs) > top_k:
+            recs = self._mmr(query, recs, top_k, lambda_weight=settings.mmr_lambda)
+        return recs
+
+    def _mmr(self, query: str, recs: List[RetrievedChunk], k: int, lambda_weight: float = 0.5) -> List[RetrievedChunk]:
+        # 使用嵌入空间相似度近似去冗余
+        query_vec = self.embedder.encode([query], normalize_embeddings=True)
+        query_vec = np.array(query_vec).astype("float32")[0]
+        cand_vecs = self.embedder.encode([r.text for r in recs], normalize_embeddings=True)
+        cand_vecs = np.array(cand_vecs).astype("float32")
+        selected: list[int] = []
+        remaining = set(range(len(recs)))
+        def sim(a: np.ndarray, b: np.ndarray) -> float:
+            return float(np.dot(a, b))
+        while remaining and len(selected) < k:
+            if not selected:
+                # 先选与 query 最相似
+                idx = max(remaining, key=lambda i: sim(query_vec, cand_vecs[i]))
+                selected.append(idx)
+                remaining.remove(idx)
+                continue
+            best_idx = None
+            best_score = -1e9
+            for i in list(remaining):
+                relevance = sim(query_vec, cand_vecs[i])
+                diversity = max(sim(cand_vecs[i], cand_vecs[j]) for j in selected)
+                mmr_score = lambda_weight * relevance - (1 - lambda_weight) * diversity
+                if mmr_score > best_score:
+                    best_score = mmr_score
+                    best_idx = i
+            selected.append(best_idx)  # type: ignore[arg-type]
+            remaining.remove(best_idx)  # type: ignore[arg-type]
+        return [recs[i] for i in selected]
 
     def add_document(self, path: str, text: str) -> int:
         # 支持两种后端的在线新增

@@ -55,6 +55,13 @@ class Settings:
     # 向量后端：auto | milvus | faiss
     vector_backend: str = os.getenv("VECTOR_BACKEND", "auto").lower()
 
+    # 检索质量参数
+    bm25_enabled: bool = os.getenv("RAG_BM25_ENABLED", "true").lower() in {"1", "true", "yes"}
+    bm25_weight: float = float(os.getenv("RAG_BM25_WEIGHT", "0.35"))
+    vec_weight: float = float(os.getenv("RAG_VEC_WEIGHT", "0.65"))
+    score_threshold: float = float(os.getenv("RAG_SCORE_THRESHOLD", "0.0"))  # 过滤过低分
+    mmr_lambda: float = float(os.getenv("RAG_MMR_LAMBDA", "0.5"))  # 多样性权衡
+
 
 def ensure_dirs(path: str) -> None:
     os.makedirs(path, exist_ok=True)
