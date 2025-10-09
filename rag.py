@@ -147,18 +147,60 @@ class VectorStore:
         return len(chunks)
 
     def delete_document(self, path: str) -> int:
-        if self.backend != "milvus" or self.collection is None:
-            raise RuntimeError("FAISS 模式下暂不支持在线删除文档，请通过 ingest 重建索引")
-        escaped = path.replace("'", "\\'")
-        expr = "path == '" + escaped + "'"
-        res = self.collection.delete(expr)
-        self.collection.flush()
-        cnt = 0
-        try:
-            cnt = int(getattr(res, "delete_count", 0))
-        except Exception:
+        # Milvus 在线删除
+        if self.backend == "milvus" and self.collection is not None:
+            escaped = path.replace("'", "\\'")
+            expr = "path == '" + escaped + "'"
+            res = self.collection.delete(expr)
+            self.collection.flush()
             cnt = 0
-        return cnt
+            try:
+                cnt = int(getattr(res, "delete_count", 0))
+            except Exception:
+                cnt = 0
+            return cnt
+
+        # FAISS 本地删除：过滤 meta.jsonl，并重建索引
+        if self.backend == "faiss" and self.faiss_index is not None:
+            # 过滤内存中的文本与元数据
+            remain_texts: List[str] = []
+            remain_metas: List[Dict[str, Any]] = []
+            removed = 0
+            for t, m in zip(self.texts, self.metas):
+                if str(m.get("path")) == path:
+                    removed += 1
+                    continue
+                remain_texts.append(t)
+                remain_metas.append(m)
+
+            # 重写 meta.jsonl
+            with open(self.meta_path, "w", encoding="utf-8") as f:
+                for m, t in zip(remain_metas, remain_texts):
+                    f.write(json.dumps({"meta": m, "text": t}, ensure_ascii=False) + "\n")
+
+            # 重新编码剩余文本并重建 faiss 索引
+            if remain_texts:
+                import faiss  # type: ignore
+                vecs = self.embedder.encode(remain_texts, normalize_embeddings=True)
+                vecs = np.array(vecs).astype("float32")
+                index = faiss.IndexFlatIP(vecs.shape[1])
+                index.add(vecs)
+                faiss.write_index(index, getattr(self, "faiss_path", os.path.join(os.path.dirname(self.meta_path), "faiss.index")))
+                self.faiss_index = index
+            else:
+                # 空库：重建一个空索引
+                import faiss  # type: ignore
+                dim = int(self.embedder.get_sentence_embedding_dimension()) if hasattr(self.embedder, 'get_sentence_embedding_dimension') else len(self.embedder.encode(["dim"], normalize_embeddings=True)[0])
+                index = faiss.IndexFlatIP(dim)
+                faiss.write_index(index, getattr(self, "faiss_path", os.path.join(os.path.dirname(self.meta_path), "faiss.index")))
+                self.faiss_index = index
+
+            # 更新内存
+            self.texts = remain_texts
+            self.metas = remain_metas
+            return removed
+
+        raise RuntimeError("当前向量后端未就绪，无法删除文档")
 
     def list_paths(self, limit: int = 1000) -> List[str]:
         if self.backend == "milvus" and self.collection is not None:

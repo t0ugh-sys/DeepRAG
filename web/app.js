@@ -37,7 +37,24 @@ function appendMsg(role, text, useMarkdown=false) {
   const div = document.createElement('div');
   div.className = `msg ${role}`;
   if (useMarkdown && window.marked) {
-    div.innerHTML = marked.parse(text);
+    // 渲染 markdown，并为代码块添加复制按钮
+    const html = marked.parse(text);
+    div.innerHTML = html;
+    // 延迟到下一个宏任务，确保节点已插入
+    setTimeout(() => {
+      div.querySelectorAll('pre').forEach((pre) => {
+        if (pre.dataset.enhanced) return;
+        pre.dataset.enhanced = '1';
+        const btn = document.createElement('button');
+        btn.className = 'copy-btn';
+        btn.textContent = '复制';
+        btn.addEventListener('click', async () => {
+          const code = pre.innerText || '';
+          try { await navigator.clipboard.writeText(code); btn.textContent = '已复制'; setTimeout(() => btn.textContent = '复制', 1200); } catch {}
+        });
+        pre.prepend(btn);
+      });
+    });
   } else {
     div.textContent = text;
   }
@@ -63,6 +80,7 @@ async function ask(question) {
   $('#askBtn').disabled = true;
   $('#typing').style.display = '';
   const ctrl = new AbortController();
+  const t0 = performance.now();
   const res = await fetch(nsParam('/ask_stream'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...commonHeaders() },
@@ -110,6 +128,8 @@ async function ask(question) {
   // 保存助手回答到历史
   conversation.push({ role: 'assistant', content: answer, ts: Date.now(), sources: srcPayloads });
   saveConversation();
+  const ms = Math.round(performance.now() - t0);
+  appendMsg('assistant', `耗时 ${(ms/1000).toFixed(2)}s`, false);
   // UI: end loading
   $('#askBtn').disabled = false;
   $('#typing').style.display = 'none';
