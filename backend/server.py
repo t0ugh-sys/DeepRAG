@@ -1,6 +1,8 @@
 from typing import List, Any, Dict
+import time
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -11,8 +13,25 @@ from pydantic import BaseModel
 
 from config import Settings
 from rag import RAGPipeline, RetrievedChunk
+from utils.logger import logger
+from utils.middleware import RequestLoggingMiddleware
+from utils.responses import success_response, error_response
 
-app = FastAPI(title="Local RAG API", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    logger.info("🚀 RAG 服务启动中...")
+    yield
+    logger.info("👋 RAG 服务关闭")
+
+app = FastAPI(
+    title="Local RAG API",
+    version="0.2.0",
+    lifespan=lifespan
+)
+
+# 添加请求日志中间件
+app.add_middleware(RequestLoggingMiddleware)
 # CORS 配置：开发环境允许所有源；生产环境建议限制具体域名
 app.add_middleware(
     CORSMiddleware,
@@ -64,7 +83,13 @@ def _require_api_key(headers: Dict[str, str]) -> None:
 @app.on_event("startup")
 def _load_pipeline() -> None:
     global pipeline
-    pipeline = RAGPipeline(settings, settings.default_namespace)
+    try:
+        logger.info("加载 RAG Pipeline...")
+        pipeline = RAGPipeline(settings, settings.default_namespace)
+        logger.info("✓ RAG Pipeline 加载完成")
+    except Exception as e:
+        logger.error(f"✗ RAG Pipeline 加载失败: {e}")
+        raise
 
 
 def _collection_name(ns: str) -> str:
@@ -167,37 +192,49 @@ def ask(req: AskRequest, x_api_key: str | None = None, namespace: str | None = N
 
 @app.get("/healthz")
 def healthz() -> JSONResponse:  # type: ignore[override]
+    """健康检查与监控指标"""
     ok = True
-    details: Dict[str, Any] = {}
+    details: Dict[str, Any] = {
+        "timestamp": time.time(),
+        "version": "0.2.0"
+    }
+    
     try:
         assert pipeline is not None
         store = pipeline.store  # type: ignore[attr-defined]
         coll = getattr(store, "collection", None)
         active_backend = getattr(store, "backend", None)
+        
         if coll is not None:
             try:
                 coll.load()
-            except Exception:
-                pass
-            num = 0
-            try:
                 num = coll.num_entities  # type: ignore[attr-defined]
-            except Exception:
-                pass
-            details.update({
-                "milvus_collection": coll.name if hasattr(coll, "name") else None,
-                "milvus_entities": int(num) if isinstance(num, int) else num,
-            })
+                details.update({
+                    "milvus_collection": coll.name if hasattr(coll, "name") else None,
+                    "milvus_entities": int(num) if isinstance(num, int) else num,
+                })
+            except Exception as e:
+                logger.warning(f"Milvus 状态检查失败: {e}")
+                details["milvus_warning"] = str(e)
+        
+        # 基础指标
         details.update({
             "embedding_model": pipeline.settings.embedding_model_name,
             "llm_model": pipeline.settings.llm_model,
             "top_k": pipeline.settings.top_k,
             "vector_backend_config": pipeline.settings.vector_backend,
             "vector_backend_active": active_backend,
+            "bm25_enabled": pipeline.settings.bm25_enabled,
+            "reranker_enabled": pipeline.settings.reranker_enabled,
         })
+        
+        logger.debug("健康检查完成")
+        
     except Exception as exc:
         ok = False
         details["error"] = str(exc)
+        logger.error(f"健康检查失败: {exc}")
+    
     return JSONResponse({"ok": ok, "details": details})
 
 
