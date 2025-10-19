@@ -8,12 +8,12 @@ try:  # pragma: no cover
     # 获取项目根目录（backend 的父目录）
     _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
-    # 优先加载 .env.local，其次加载 .env；不覆盖已存在的进程环境变量
+    # 优先加载 .env.local，其次加载 .env；覆盖已存在的进程环境变量
     for _fname in (".env.local", ".env"):
         _env_path = os.path.join(_project_root, _fname)
         try:
             if os.path.exists(_env_path):
-                load_dotenv(dotenv_path=_env_path, override=False)
+                load_dotenv(dotenv_path=_env_path, override=True)
                 print(f"✓ 加载环境变量文件: {_env_path}")
         except Exception as e:
             print(f"✗ 加载环境变量文件失败: {_env_path}, {e}")
@@ -66,6 +66,13 @@ class Settings:
     vec_weight: float = float(os.getenv("RAG_VEC_WEIGHT", "0.65"))
     score_threshold: float = float(os.getenv("RAG_SCORE_THRESHOLD", "0.0"))  # 过滤过低分
     mmr_lambda: float = float(os.getenv("RAG_MMR_LAMBDA", "0.5"))  # 多样性权衡
+    
+    def __post_init__(self):
+        # 调试：打印 API key 是否存在
+        if self.openai_api_key:
+            print(f"✓ OPENAI_API_KEY loaded (length: {len(self.openai_api_key)})")
+        else:
+            print("✗ OPENAI_API_KEY not found in environment!")
 
 
 def ensure_dirs(path: str) -> None:
