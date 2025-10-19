@@ -7,16 +7,14 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 from pymilvus import connections, Collection
-from ingest import split_text
-from config import Settings
+from backend.ingest import split_text
+from backend.config import Settings
 from rank_bm25 import BM25Okapi  # type: ignore
 
 try:
     from FlagEmbedding import FlagReranker  # type: ignore
 except Exception:  # pragma: no cover
     FlagReranker = None  # type: ignore
-
-from config import Settings
 
 
 @dataclass

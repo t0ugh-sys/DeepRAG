@@ -9,7 +9,7 @@ from sentence_transformers import SentenceTransformer
 
 import faiss
 
-from config import Settings, ensure_dirs
+from backend.config import Settings, ensure_dirs
 
 # Milvus
 from pymilvus import connections, FieldSchema, CollectionSchema, DataType, Collection, utility
