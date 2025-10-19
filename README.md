@@ -1,118 +1,225 @@
-## 本地 RAG 知识库 + 大模型 API 调用（FastAPI）
+# 🚀 DeepRAG - 企业级 RAG 知识库系统
 
-### 功能
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-green.svg)](https://fastapi.tiangolo.com/)
+[![Vue](https://img.shields.io/badge/Vue-3.5+-brightgreen.svg)](https://vuejs.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-- 文档入库（ingest）：支持 `.txt`、`.md`、`.pdf`，自动切分、向量化、默认建立 FAISS 索引（如配置了 Milvus 则优先写入 Milvus）
-- 检索增强生成（RAG）：相似检索 + 提示词拼接
-- 大模型调用：支持 OpenAI 兼容接口（可自定义 `base_url` 和 `api_key`）
-- FastAPI 服务：`POST /ask` 提问，返回答案与引用来源
+基于 FastAPI + Vue 3 的前后端分离 RAG（检索增强生成）系统，支持 Milvus/FAISS 向量存储、BM25 混合检索、Reranker 重排，以及多租户隔离。
 
-### 目录结构
+## ✨ 核心特性
 
-```
-.
-├── requirements.txt
-├── README.md
-├── config.py
-├── ingest.py
-├── rag.py
-├── server.py
-└── web/
-    ├── index.html
-    ├── app.js
-    └── styles.css
-```
+- 🔍 **混合检索**：向量检索 + BM25 融合，MMR 多样性采样
+- 🎯 **智能重排**：可选 FlagEmbedding Reranker 提升相关性
+- 💾 **灵活存储**：Milvus 云原生 / FAISS 本地，自动回退
+- 🔐 **多租户**：命名空间隔离 + API Key 鉴权
+- 📄 **文档解析**：支持 `.txt`, `.md`, `.pdf`，智能分块
+- 🌐 **现代前端**：Vue 3 + Vite，组件化架构，代码高亮
+- 📊 **可观测性**：结构化日志、健康检查、监控指标
+- 🐳 **易部署**：Docker Compose 一键启动
 
-### 环境准备
-
-1) 安装依赖（建议 Python 3.10+）
-   
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2) 准备环境变量（Windows PowerShell 示例）：
-   
-   ```powershell
-   $env:OPENAI_API_KEY = "YOUR_API_KEY"
-   # 如使用 OpenAI 兼容服务（如本地服务/第三方），可设置自定义 base_url
-   # $env:OPENAI_BASE_URL = "https://your.base.url/v1"
-   # 指定模型名
-   $env:RAG_MODEL = "gpt-4o-mini"
-   ```
-
-也可以在项目根目录新建 `.env` 或 `.env.local` 文件（不覆盖系统环境变量），例如：
+## 🏗️ 架构
 
 ```
-OPENAI_API_KEY=sk-xxx
-OPENAI_BASE_URL=http://localhost:11434/v1
-RAG_MODEL=qwen2.5:14b-instruct
+┌─────────────────┐         ┌──────────────────┐
+│   Vue 3 前端    │◄───────►│  FastAPI 后端    │
+│  (Vite 5173)   │  HTTP   │   (uvicorn 8000) │
+└─────────────────┘         └──────────┬───────┘
+                                       │
+                      ┌────────────────┼────────────────┐
+                      │                │                │
+                 ┌────▼────┐     ┌────▼────┐     ┌────▼────┐
+                 │ Milvus  │     │ OpenAI  │     │ BM25    │
+                 │ /FAISS  │     │  兼容   │     │ Rerank  │
+                 └─────────┘     └─────────┘     └─────────┘
+```
+
+## 🚀 快速开始
+
+### 环境要求
+
+- Python 3.10+
+- Node.js 20+ (前端)
+- Conda (推荐，用于 FAISS)
+
+### 1. 安装依赖
+
+```bash
+# 后端（推荐使用 conda 环境）
+conda create -n rag-env python=3.10 -y
+conda activate rag-env
+pip install -r requirements.txt
+conda install -c conda-forge faiss-cpu rank-bm25 -y
+
+# 前端
+cd frontend
+npm install
+```
+
+### 2. 配置环境变量
+
+在项目根目录创建 `.env` 文件：
+
+```bash
+# 大模型配置（OpenAI 兼容）
+OPENAI_API_KEY=sk-your-key
+OPENAI_BASE_URL=https://api.deepseek.com/v1  # 或其他兼容服务
+RAG_MODEL=deepseek-chat
+
+# 向量存储（auto 自动选择 Milvus/FAISS）
+VECTOR_BACKEND=auto
+MILVUS_HOST=127.0.0.1
+MILVUS_PORT=19530
+
+# 检索参数
 RAG_TOP_K=4
-VECTOR_BACKEND=auto   # auto|milvus|faiss
-MILVUS_HOST=127.0.0.1
-MILVUS_PORT=19530
-MILVUS_COLLECTION=rag_chunks
+RAG_BM25_ENABLED=true
+RAG_RERANKER_ENABLED=false
+
+# 多租户与鉴权
 RAG_NAMESPACE=default
-RAG_API_KEY=           # 若设置则服务端要求请求头 X-API-Key
+RAG_API_KEY=  # 可选，设置后需请求头 X-API-Key
 ```
 
-3) 准备待入库文档：将文件放入 `data/docs` 目录（不存在会自动创建）。支持 `.txt`、`.md`、`.pdf`。
-
-### 文档入库（构建索引）
+### 3. 准备文档并构建索引
 
 ```bash
-python ingest.py --docs_dir data/docs --index_dir data/index --chunk_size 800 --chunk_overlap 120
+# 将文档放入 data/docs/ 目录
+mkdir -p data/docs
+echo "你的知识库内容" > data/docs/sample.txt
+
+# 构建索引
+python ingest.py --docs_dir data/docs --index_dir data/index
 ```
 
-运行完成后，会在 `data/index` 下生成 `faiss.index` 和 `meta.jsonl`。若已配置 Milvus，向量会优先写入 Milvus 集合：`{MILVUS_COLLECTION}_{RAG_NAMESPACE}`。
-
-### 启动服务
+### 4. 启动服务
 
 ```bash
-uvicorn server:app --host 0.0.0.0 --port 8000
+# 后端（终端 1）
+uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+
+# 前端（终端 2）
+cd frontend
+npm run dev  # 访问 http://localhost:5173
 ```
 
-### 提问示例
+## 📚 API 文档
+
+启动后访问 `http://localhost:8000/docs` 查看 Swagger 交互式文档。
+
+### 主要端点
+
+- `POST /ask_stream` - 流式问答（SSE）
+- `POST /docs` - 上传文档
+- `DELETE /docs?path=xxx` - 删除文档
+- `GET /docs/paths` - 列出已入库路径
+- `POST /namespaces/create` - 创建命名空间
+- `GET /healthz` - 健康检查
+
+## 🐳 Docker 部署
 
 ```bash
-curl -X POST http://127.0.0.1:8000/ask ^
-  -H "Content-Type: application/json" ^
-  -d "{\"question\": \"请总结知识库的要点\", \"top_k\": 4}"
+# 构建并启动（包含 Milvus）
+docker-compose up -d
+
+# 仅后端
+docker build -t rag-backend .
+docker run -p 8000:8000 --env-file .env rag-backend
 ```
 
-响应字段：
+## 📖 使用示例
 
-- `answer`：模型回答
-- `sources`：引用的文档切片与相似度分数
+### Python SDK
 
-### 使用自定义/本地 OpenAI 兼容服务
+```python
+import requests
 
-设置环境变量：
+response = requests.post(
+    "http://localhost:8000/ask_stream",
+    json={"question": "什么是 RAG？", "top_k": 4},
+    headers={"X-API-Key": "your-key"},  # 可选
+    stream=True
+)
 
-```powershell
-$env:OPENAI_API_KEY = "sk-xxx"
-$env:OPENAI_BASE_URL = "http://localhost:11434/v1"  # 示例
-$env:RAG_MODEL = "qwen2.5:14b-instruct"             # 示例
+for line in response.iter_lines():
+    if line.startswith(b"data: "):
+        print(line.decode()[6:], end="")
 ```
 
-### Milvus 使用说明（可选）
+### cURL
 
-1) 安装并启动 Milvus（standalone）：参考官方文档。
-
-2) 在 `.env` 中设置：
-
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "介绍一下系统功能", "top_k": 4}'
 ```
+
+## 🛠️ 高级配置
+
+### BM25 混合检索
+
+```bash
+RAG_BM25_ENABLED=true
+RAG_BM25_WEIGHT=0.35
+RAG_VEC_WEIGHT=0.65
+RAG_MMR_LAMBDA=0.5  # 多样性权衡
+```
+
+### Reranker 重排
+
+```bash
+RAG_RERANKER_ENABLED=true
+RAG_RERANKER_MODEL=BAAI/bge-reranker-base
+RAG_RERANKER_TOP_N=4
+```
+
+### Milvus 云端部署
+
+```bash
 VECTOR_BACKEND=milvus
-MILVUS_HOST=127.0.0.1
+MILVUS_HOST=your-milvus.cloud
 MILVUS_PORT=19530
-MILVUS_COLLECTION=rag_chunks
-RAG_NAMESPACE=default
+MILVUS_USER=xxx
+MILVUS_PASSWORD=xxx
+MILVUS_SECURE=true
 ```
 
-3) 构建索引时会自动创建/覆盖集合并写入分片；服务端检索时若 Milvus 连接失败会自动回退到本地 FAISS。
+## 🤝 贡献指南
 
-### 常见问题
+欢迎贡献！请先 Fork 本仓库，然后：
 
-- 若 `faiss` 安装失败，优先尝试 `faiss-cpu` 对应的 Python 版本；或在 Conda 环境中安装。
-- PDF 解析可能较慢或对复杂排版不完美，可优先提供 `.txt`/`.md`。
-- 首次运行 `sentence-transformers` 会下载模型，需联网或预下载至缓存。
+1. 创建特性分支：`git checkout -b feature/amazing-feature`
+2. 提交改动：`git commit -m 'feat: add amazing feature'`
+3. 推送分支：`git push origin feature/amazing-feature`
+4. 提交 Pull Request
+
+### 分支规范
+
+- `main` - 生产稳定版本
+- `dev` - 开发集成分支
+- `feature/*` - 新功能开发
+- `hotfix/*` - 紧急修复
+
+## 📝 开发路线图
+
+- [ ] 多轮对话记忆与上下文管理
+- [ ] 评测框架（nDCG、MRR、Hit@K）
+- [ ] 知识图谱增强
+- [ ] 多模态支持（图片、表格）
+- [ ] Web UI 响应式适配
+- [ ] K8s Helm Chart
+
+## 📄 许可证
+
+本项目采用 [MIT License](LICENSE) 开源。
+
+## 🙏 致谢
+
+- [FastAPI](https://fastapi.tiangolo.com/) - 现代高性能 Web 框架
+- [Milvus](https://milvus.io/) - 云原生向量数据库
+- [Sentence Transformers](https://www.sbert.net/) - 语义向量模型
+- [Vue.js](https://vuejs.org/) - 渐进式前端框架
+
+---
+
+**Star ⭐ 本项目以支持开发者持续维护！**
