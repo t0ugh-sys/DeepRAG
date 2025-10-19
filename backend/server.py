@@ -20,6 +20,15 @@ from backend.utils.responses import success_response, error_response
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     logger.info("🚀 RAG 服务启动中...")
+    # 初始化 pipeline
+    global pipeline
+    try:
+        logger.info("加载 RAG Pipeline...")
+        pipeline = RAGPipeline(settings, settings.default_namespace)
+        logger.info("✓ RAG Pipeline 加载完成")
+    except Exception as e:
+        logger.error(f"✗ RAG Pipeline 加载失败: {e}")
+        raise
     yield
     logger.info("👋 RAG 服务关闭")
 
@@ -77,16 +86,6 @@ def _require_api_key(headers: Dict[str, str]) -> None:
             raise HTTPException(status_code=401, detail='Unauthorized')
 
 
-@app.on_event("startup")
-def _load_pipeline() -> None:
-    global pipeline
-    try:
-        logger.info("加载 RAG Pipeline...")
-        pipeline = RAGPipeline(settings, settings.default_namespace)
-        logger.info("✓ RAG Pipeline 加载完成")
-    except Exception as e:
-        logger.error(f"✗ RAG Pipeline 加载失败: {e}")
-        raise
 
 
 def _collection_name(ns: str) -> str:
@@ -172,7 +171,8 @@ def ns_delete(namespace: str | None = None, x_api_key: str | None = None) -> JSO
 @app.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest, x_api_key: str | None = None, namespace: str | None = None) -> AskResponse:  # type: ignore[override]
     _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
-    assert pipeline is not None
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化，请检查服务日志")
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
     answer, recs = local.ask(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n, req.model)
@@ -197,7 +197,8 @@ def healthz() -> JSONResponse:  # type: ignore[override]
     }
     
     try:
-        assert pipeline is not None
+        if pipeline is None:
+            raise Exception("RAG Pipeline 未初始化")
         store = pipeline.store  # type: ignore[attr-defined]
         coll = getattr(store, "collection", None)
         active_backend = getattr(store, "backend", None)
@@ -238,7 +239,8 @@ def healthz() -> JSONResponse:  # type: ignore[override]
 @app.post("/ask_stream")
 def ask_stream(req: AskRequest, x_api_key: str | None = None, namespace: str | None = None):  # type: ignore[override]
     _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
-    assert pipeline is not None
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化，请检查服务日志")
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
     gen, recs = local.ask_stream(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n, req.model)
@@ -272,7 +274,8 @@ class UpsertDocRequest(_BaseModel):
 @app.post("/docs")
 def upsert_doc(req: UpsertDocRequest | None = None, file: UploadFile = File(None), path: str = Form(None), x_api_key: str | None = None, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
-    assert pipeline is not None
+    if pipeline is None:
+        return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
     try:
@@ -313,7 +316,8 @@ def upsert_doc(req: UpsertDocRequest | None = None, file: UploadFile = File(None
 @app.delete("/docs")
 def delete_doc(path: str, x_api_key: str | None = None, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
-    assert pipeline is not None
+    if pipeline is None:
+        return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
     try:
@@ -325,7 +329,8 @@ def delete_doc(path: str, x_api_key: str | None = None, namespace: str | None = 
 
 @app.get("/docs/paths")
 def list_doc_paths(limit: int = 1000, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
-    assert pipeline is not None
+    if pipeline is None:
+        return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
     return JSONResponse({"ok": True, "paths": local.list_paths(limit)})
@@ -333,7 +338,8 @@ def list_doc_paths(limit: int = 1000, namespace: str | None = None) -> JSONRespo
 
 @app.get("/export")
 def export_by_path(path: str, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
-    assert pipeline is not None
+    if pipeline is None:
+        return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
     # 简易导出：按 path 直接查询文本与 chunk_id
     try:
         ns = namespace or settings.default_namespace
@@ -350,7 +356,8 @@ def export_by_path(path: str, namespace: str | None = None) -> JSONResponse:  # 
 @app.post("/import")
 def import_chunks(payload: Dict[str, Any], x_api_key: str | None = None, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
-    assert pipeline is not None
+    if pipeline is None:
+        return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
     try:
         path = payload.get("path")
         chunks = payload.get("chunks") or []

@@ -43,12 +43,12 @@
 - Conda (推荐，用于 FAISS)
 
 ### 1. 安装依赖
-
-```bash
+   
+   ```bash
 # 后端（推荐使用 conda 环境）
 conda create -n rag-env python=3.10 -y
 conda activate rag-env
-pip install -r requirements.txt
+   pip install -r requirements.txt
 conda install -c conda-forge faiss-cpu rank-bm25 -y
 
 # 前端

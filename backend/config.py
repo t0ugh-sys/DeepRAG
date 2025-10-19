@@ -4,17 +4,22 @@ from dataclasses import dataclass
 # 尝试加载 .env 与 .env.local（若存在）
 try:  # pragma: no cover
     from dotenv import load_dotenv
-
+    
+    # 获取项目根目录（backend 的父目录）
+    _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
     # 优先加载 .env.local，其次加载 .env；不覆盖已存在的进程环境变量
     for _fname in (".env.local", ".env"):
+        _env_path = os.path.join(_project_root, _fname)
         try:
-            if os.path.exists(_fname):
-                load_dotenv(dotenv_path=_fname, override=False)
-        except Exception:
-            pass
-except Exception:
+            if os.path.exists(_env_path):
+                load_dotenv(dotenv_path=_env_path, override=False)
+                print(f"✓ 加载环境变量文件: {_env_path}")
+        except Exception as e:
+            print(f"✗ 加载环境变量文件失败: {_env_path}, {e}")
+except Exception as e:
     # 若未安装 python-dotenv，跳过，不影响运行
-    pass
+    print(f"✗ python-dotenv 未安装: {e}")
 
 
 @dataclass
