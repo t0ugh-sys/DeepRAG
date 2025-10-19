@@ -72,6 +72,7 @@ function saveConversations() {
 function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark';
   localStorage.setItem('theme', theme.value);
+  document.documentElement.setAttribute('data-theme', theme.value);
 }
 
 function newConversation() {
@@ -179,6 +180,8 @@ async function loadPaths() {
 
 onMounted(() => {
   loadPaths();
+  // 初始化主题
+  document.documentElement.setAttribute('data-theme', theme.value);
 });
 </script>
 

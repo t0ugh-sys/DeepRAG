@@ -9,6 +9,7 @@ from openai import OpenAI
 from pymilvus import connections, Collection
 from backend.ingest import split_text
 from backend.config import Settings
+from backend.utils.cache import query_cache
 from rank_bm25 import BM25Okapi  # type: ignore
 
 try:
@@ -28,6 +29,7 @@ class VectorStore:
     def __init__(self, meta_path: str, embedding_model: str, settings: Settings, namespace: str | None = None) -> None:
         if not os.path.exists(meta_path):
             raise FileNotFoundError("未找到 meta.jsonl，请先运行 ingest 构建索引")
+        self.namespace = namespace or settings.default_namespace
         self.texts: List[str] = []
         self.metas: List[Dict[str, Any]] = []
         self.meta_path = meta_path
@@ -375,7 +377,16 @@ class RAGPipeline:
 
     def ask(self, question: str, top_k: int | None = None, rerank_enabled: bool | None = None, rerank_top_n: int | None = None, model: str | None = None) -> Tuple[str, List[RetrievedChunk]]:
         k = top_k or self.settings.top_k
-        recs = self.store.search(question, k)
+        
+        # 尝试从缓存获取检索结果
+        namespace = getattr(self.store, 'namespace', 'default')
+        cached_result = query_cache.get(question, k, namespace)
+        if cached_result is not None:
+            recs = cached_result
+        else:
+            recs = self.store.search(question, k)
+            # 缓存检索结果
+            query_cache.set(question, k, namespace, recs)
         # 可选重排
         use_rr = (self.reranker is not None) and (self.settings.reranker_enabled if rerank_enabled is None else rerank_enabled)
         top_n = rerank_top_n or self.settings.reranker_top_n

@@ -15,6 +15,7 @@ from backend.rag import RAGPipeline, RetrievedChunk
 from backend.utils.logger import logger
 from backend.utils.middleware import RequestLoggingMiddleware
 from backend.utils.responses import success_response, error_response
+from backend.utils.cache import query_cache
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -378,5 +379,25 @@ def import_chunks(payload: Dict[str, Any], x_api_key: str | None = None, namespa
         return JSONResponse({"ok": True, "added": added})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+
+
+@app.get("/cache/stats")
+def cache_stats(x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
+    """获取缓存统计信息"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    return JSONResponse({
+        "ok": True,
+        "cache_size": query_cache.size(),
+        "max_size": query_cache.maxsize
+    })
+
+
+@app.post("/cache/clear")
+def cache_clear(x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
+    """清空缓存"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    query_cache.clear()
+    logger.info("缓存已清空")
+    return JSONResponse({"ok": True, "message": "缓存已清空"})
 
 
