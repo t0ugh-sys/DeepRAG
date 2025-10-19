@@ -137,20 +137,45 @@ async function sendQuestion() {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let answer = '';
+    let buffer = ''; // 缓冲区，用于处理不完整的 UTF-8 字符
     
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
+      
       const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n\n');
+      buffer += chunk;
+      const lines = buffer.split('\n\n');
+      
+      // 保留最后一个可能不完整的行
+      buffer = lines.pop() || '';
+      
       for (const line of lines) {
         if (!line) continue;
         if (line.startsWith('data: ')) {
           const token = line.slice(6);
-          answer += token;
-          streamingContent.value = answer;
-          await nextTick();
-          scrollToBottom();
+          
+          // 逐字输出效果：将 token 拆分成单个字符
+          // 如果 token 很短（如单个字符），直接显示
+          // 如果 token 较长，逐字显示以产生流畅的打字机效果
+          if (token.length <= 2) {
+            answer += token;
+            streamingContent.value = answer;
+            await nextTick();
+            scrollToBottom();
+          } else {
+            // 对于较长的 token，逐字显示
+            for (const char of token) {
+              answer += char;
+              streamingContent.value = answer;
+              await nextTick();
+              scrollToBottom();
+              
+              // 添加极小的延迟以产生流畅效果，但不会太慢
+              // 注释掉这行可以获得更快的输出速度
+              await new Promise(resolve => setTimeout(resolve, 5));
+            }
+          }
         }
       }
     }
