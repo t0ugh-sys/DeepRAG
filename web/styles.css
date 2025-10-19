@@ -7,9 +7,13 @@ h1 { margin: 0; font-size: 22px; }
 .status { font-size: 12px; opacity: 0.8; }
 .chat { background: #101623; border: 1px solid #1d2639; border-radius: 12px; padding: 16px; box-shadow: 0 8px 20px rgba(0,0,0,0.25); min-height: calc(100vh - 220px); }
 .messages { height: 460px; overflow: auto; padding: 12px; background: #0e1421; border-radius: 10px; border: 1px solid #1d2639; }
-.msg { margin: 10px 0; line-height: 1.7; white-space: pre-wrap; max-width: 88%; padding: 10px 12px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+.message { display: flex; gap: 10px; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: #27324a; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #c6d1f0; flex-shrink: 0; }
+.msg { margin: 10px 0; line-height: 1.7; white-space: pre-wrap; max-width: 88%; padding: 10px 12px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); flex: 1; }
 .msg.user { background: linear-gradient(180deg,#0b254a,#0b1e38); color: #a0cfff; margin-left: auto; border: 1px solid #213456; }
 .msg.assistant { background: #0f1524; color: #e6e8eb; border: 1px solid #27324a; }
+.msg .menu { float: right; opacity: 0.6; cursor: pointer; }
+.msg:hover .menu { opacity: 1; }
 .typing { margin-top: 8px; font-size: 12px; opacity: 0.8; }
 .input { display: flex; gap: 8px; margin-top: 12px; }
 input[type="text"] { flex: 1; padding: 10px 12px; border-radius: 8px; outline: none; border: 1px solid #27324a; background: #0e1421; color: #e6e8eb; }

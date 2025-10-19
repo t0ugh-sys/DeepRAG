@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DeepRAG-Milvus</title>
     <link rel="stylesheet" href="/web/styles.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
   </head>
   <body>
     <div class="container layout-3col">
@@ -23,6 +24,7 @@
           <button class="btn subtle" id="btnClearNS">清空NS</button>
           <button class="btn danger subtle" id="btnDeleteNS">删除</button>
           <div class="status" id="status">Checking health...</div>
+          <div class="status" id="stats">tokens: - | time: -</div>
         </div>
       </header>
 
@@ -77,6 +79,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/common.min.js"></script>
     <script src="/web/app.js"></script>
   </body>
   </html>

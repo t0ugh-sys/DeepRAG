@@ -2,6 +2,7 @@ const $ = (sel) => document.querySelector(sel);
 const messagesEl = $('#messages');
 const sourcesEl = $('#sources');
 const statusEl = $('#status');
+const statsEl = $('#stats');
 let conversation = [];
 
 function commonHeaders() {
@@ -34,12 +35,46 @@ async function checkHealth() {
 }
 
 function appendMsg(role, text, useMarkdown=false) {
+  const wrap = document.createElement('div');
+  wrap.className = 'message';
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  avatar.textContent = role === 'user' ? 'U' : 'A';
   const div = document.createElement('div');
   div.className = `msg ${role}`;
+  const menu = document.createElement('span');
+  menu.className = 'menu';
+  menu.textContent = '⋯';
+  menu.title = '复制/删除/导出/置顶';
+  menu.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const action = window.prompt('输入 copy / delete / export / pin', 'copy');
+    if (!action) return;
+    if (action.startsWith('c')) {
+      const plain = div.innerText || '';
+      try { await navigator.clipboard.writeText(plain); alert('已复制'); } catch {}
+    } else if (action.startsWith('d')) {
+      wrap.remove();
+    } else if (action.startsWith('e')) {
+      // 导出单条
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `message-${Date.now()}.txt`; a.click();
+      URL.revokeObjectURL(url);
+    } else if (action.startsWith('p')) {
+      // 置顶
+      messagesEl.prepend(wrap);
+    }
+  });
   if (useMarkdown && window.marked) {
     // 渲染 markdown，并为代码块添加复制按钮
-    const html = marked.parse(text);
+    const html = marked.parse(text, { mangle: false, headerIds: false });
     div.innerHTML = html;
+    // 代码高亮
+    div.querySelectorAll('pre code').forEach((block) => {
+      try { window.hljs && window.hljs.highlightElement(block); } catch {}
+    });
     // 延迟到下一个宏任务，确保节点已插入
     setTimeout(() => {
       div.querySelectorAll('pre').forEach((pre) => {
@@ -58,7 +93,10 @@ function appendMsg(role, text, useMarkdown=false) {
   } else {
     div.textContent = text;
   }
-  messagesEl.appendChild(div);
+  div.prepend(menu);
+  wrap.appendChild(avatar);
+  wrap.appendChild(div);
+  messagesEl.appendChild(wrap);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
@@ -90,9 +128,16 @@ async function ask(question) {
   let answer = '';
   const srcPayloads = [];
   // progressive render: create a live message element
+  const liveWrap = document.createElement('div');
+  liveWrap.className = 'message';
+  const liveAvatar = document.createElement('div');
+  liveAvatar.className = 'avatar';
+  liveAvatar.textContent = 'A';
   const live = document.createElement('div');
   live.className = 'msg assistant';
-  messagesEl.appendChild(live);
+  liveWrap.appendChild(liveAvatar);
+  liveWrap.appendChild(live);
+  messagesEl.appendChild(liveWrap);
   const reader = res.body.getReader();
   const decoder = new TextDecoder('utf-8');
   while (true) {
@@ -130,6 +175,9 @@ async function ask(question) {
   saveConversation();
   const ms = Math.round(performance.now() - t0);
   appendMsg('assistant', `耗时 ${(ms/1000).toFixed(2)}s`, false);
+  // 估算 Token：按 4 字/Token 粗估（中文/英文混合场景）
+  const tokenEstimate = Math.round((question.length + answer.length) / 4);
+  if (statsEl) statsEl.textContent = `tokens: ${tokenEstimate} | time: ${(ms/1000).toFixed(2)}s`;
   // UI: end loading
   $('#askBtn').disabled = false;
   $('#typing').style.display = 'none';
