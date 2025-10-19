@@ -2,24 +2,35 @@ import os
 from dataclasses import dataclass
 
 # 尝试加载 .env 与 .env.local（若存在）
-try:  # pragma: no cover
-    from dotenv import load_dotenv
-    
-    # 获取项目根目录（backend 的父目录）
-    _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
-    # 优先加载 .env.local，其次加载 .env；覆盖已存在的进程环境变量
-    for _fname in (".env.local", ".env"):
-        _env_path = os.path.join(_project_root, _fname)
-        try:
-            if os.path.exists(_env_path):
-                load_dotenv(dotenv_path=_env_path, override=True)
-                print(f"✓ 加载环境变量文件: {_env_path}")
-        except Exception as e:
-            print(f"✗ 加载环境变量文件失败: {_env_path}, {e}")
-except Exception as e:
-    # 若未安装 python-dotenv，跳过，不影响运行
-    print(f"✗ python-dotenv 未安装: {e}")
+def _load_env_files():
+    """在导入时立即加载环境变量"""
+    try:
+        from dotenv import load_dotenv
+        
+        # 获取项目根目录（backend 的父目录）
+        _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # 优先加载 .env.local，其次加载 .env；覆盖已存在的进程环境变量
+        for _fname in (".env.local", ".env"):
+            _env_path = os.path.join(_project_root, _fname)
+            try:
+                if os.path.exists(_env_path):
+                    load_dotenv(dotenv_path=_env_path, override=True)
+                    print(f"✓ 加载环境变量文件: {_env_path}")
+                    # 调试：立即检查是否加载成功
+                    api_key = os.getenv("OPENAI_API_KEY")
+                    if api_key:
+                        print(f"  → OPENAI_API_KEY 已加载 (长度: {len(api_key)})")
+                    else:
+                        print(f"  → OPENAI_API_KEY 仍然为空！")
+            except Exception as e:
+                print(f"✗ 加载环境变量文件失败: {_env_path}, {e}")
+    except Exception as e:
+        # 若未安装 python-dotenv，跳过，不影响运行
+        print(f"✗ python-dotenv 未安装: {e}")
+
+# 立即执行加载
+_load_env_files()
 
 
 @dataclass
