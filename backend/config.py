@@ -78,6 +78,9 @@ class Settings:
     score_threshold: float = float(os.getenv("RAG_SCORE_THRESHOLD", "0.0"))  # 过滤过低分
     mmr_lambda: float = float(os.getenv("RAG_MMR_LAMBDA", "0.5"))  # 多样性权衡
     
+    # 严格模式：True=仅基于知识库回答，False=允许模型自由发挥
+    strict_mode: bool = os.getenv("RAG_STRICT_MODE", "true").lower() in {"1", "true", "yes"}
+    
     def __post_init__(self):
         # 调试：打印 API key 是否存在
         if self.openai_api_key:

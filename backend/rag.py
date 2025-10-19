@@ -296,16 +296,57 @@ class VectorStore:
         return paths
 
 
-def build_prompt(question: str, contexts: List[RetrievedChunk]) -> str:
+def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: bool = True) -> str:
+    """
+    构建 RAG 提示词
+    
+    Args:
+        question: 用户问题
+        contexts: 检索到的上下文片段
+        strict_mode: 严格模式。True=仅基于知识库回答；False=允许模型自由发挥
+    """
+    # 检查是否有有效的上下文（分数阈值或为空）
+    has_valid_context = len(contexts) > 0 and any(c.score > 0.1 for c in contexts)
+    
+    if not has_valid_context and strict_mode:
+        # 严格模式：没有命中知识库时，明确告知用户
+        prompt = (
+            "你是一个严谨的知识库检索助手。\n"
+            f"用户问题：{question}\n\n"
+            "检索结果：未在知识库中找到相关信息。\n\n"
+            "请礼貌地告诉用户：\n"
+            "1. 当前知识库中没有找到与该问题相关的资料\n"
+            "2. 建议用户补充相关文档到知识库，或换个方式提问\n"
+            "3. 不要编造或猜测答案"
+        )
+        return prompt
+    
+    # 有上下文或非严格模式：正常构建提示词
     context_blocks = []
     for i, c in enumerate(contexts, start=1):
         path = c.meta.get("path", "")
-        context_blocks.append(f"[片段{i}] 来源: {path}\n{c.text}")
+        score = f"相关度: {c.score:.2f}"
+        context_blocks.append(f"[片段{i}] 来源: {path} ({score})\n{c.text}")
     context_text = "\n\n".join(context_blocks)
+    
+    if strict_mode:
+        system_instruction = (
+            "你是一个严谨的知识助手。\n"
+            "**重要规则**：\n"
+            "1. 仅使用下列检索到的资料片段来回答问题\n"
+            "2. 严格基于资料作答，不要添加资料中没有的信息\n"
+            "3. 如果资料不足以完整回答问题，明确说明哪些部分资料未覆盖\n"
+            "4. 绝对不要编造、推测或使用资料之外的知识\n"
+        )
+    else:
+        system_instruction = (
+            "你是一个智能助手。\n"
+            "优先使用下列检索到的资料片段来回答问题。\n"
+            "如果资料不足，可以结合你的知识进行补充，但需要明确区分哪些来自资料，哪些是补充信息。\n"
+        )
+    
     prompt = (
-        "你是一个严谨的中文知识助手。\n"
-        "请使用下列检索到的资料片段来回答问题，严格基于资料作答。\n"
-        "若资料无法回答，请明确说明“资料未覆盖”，不要编造。\n\n"
+        f"{system_instruction}\n"
         f"资料片段：\n{context_text}\n\n"
         f"问题：{question}\n\n"
         "请给出简洁、条理清晰的回答。"
@@ -344,7 +385,7 @@ class RAGPipeline:
             for r, s in zip(recs, scores):
                 r.score = float(s)
             recs = sorted(recs, key=lambda x: x.score, reverse=True)[: top_n]
-        prompt = build_prompt(question, recs)
+        prompt = build_prompt(question, recs, strict_mode=self.settings.strict_mode)
         resp = self.client.chat.completions.create(
             model=(model or self.settings.llm_model),
             messages=[{"role": "user", "content": prompt}],
@@ -365,7 +406,7 @@ class RAGPipeline:
             for r, s in zip(recs, scores):
                 r.score = float(s)
             recs = sorted(recs, key=lambda x: x.score, reverse=True)[: top_n]
-        prompt = build_prompt(question, recs)
+        prompt = build_prompt(question, recs, strict_mode=self.settings.strict_mode)
 
         def _gen():  # noqa: ANN202
             stream = self.client.chat.completions.create(
