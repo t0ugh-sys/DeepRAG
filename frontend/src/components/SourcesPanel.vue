@@ -249,14 +249,11 @@ async function uploadBatch() {
 <style scoped>
 .sources-panel {
   background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
+  border-left: 1px solid #e5e7eb;
   padding: 24px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  position: sticky;
-  top: 100px;
-  height: calc(100vh - 150px);
-  overflow: auto;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .aside-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }

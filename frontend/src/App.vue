@@ -13,6 +13,7 @@
         @toggle-theme="toggleTheme"
         @export-conv="exportConv"
         @clear-conv="clearConv"
+        @import-docs="showImportModal = true"
       />
       
       <ChatView 
@@ -20,6 +21,13 @@
         @new-message="handleNewMessage"
       />
     </div>
+    
+    <!-- 导入文档模态窗口 -->
+    <ImportModal 
+      v-if="showImportModal"
+      @close="showImportModal = false"
+      @refresh="loadPaths"
+    />
   </div>
 </template>
 
@@ -28,6 +36,7 @@ import { ref, computed, onMounted } from 'vue';
 import AppHeader from './components/AppHeader.vue';
 import Sidebar from './components/Sidebar.vue';
 import ChatView from './components/ChatView.vue';
+import ImportModal from './components/ImportModal.vue';
 import api from './api';
 
 const theme = ref(localStorage.getItem('theme') || 'light');
@@ -35,6 +44,7 @@ const conversations = ref(JSON.parse(localStorage.getItem('conversations') || '[
 const currentConvId = ref(localStorage.getItem('currentConvId') || null);
 const sources = ref([]);
 const paths = ref([]);
+const showImportModal = ref(false);
 
 // 如果没有会话，创建一个默认会话
 if (conversations.value.length === 0) {
