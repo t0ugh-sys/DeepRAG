@@ -228,13 +228,25 @@
           
           <!-- 快速预设 -->
           <div class="preset-buttons">
-            <button class="preset-btn" @click="applyPreset('balanced')">
+            <button 
+              class="preset-btn" 
+              :class="{ active: currentPreset === 'balanced' }"
+              @click="applyPreset('balanced')"
+            >
               ⚖️ 平衡模式
             </button>
-            <button class="preset-btn" @click="applyPreset('recall')">
+            <button 
+              class="preset-btn" 
+              :class="{ active: currentPreset === 'recall' }"
+              @click="applyPreset('recall')"
+            >
               📊 高召回模式
             </button>
-            <button class="preset-btn" @click="applyPreset('precision')">
+            <button 
+              class="preset-btn" 
+              :class="{ active: currentPreset === 'precision' }"
+              @click="applyPreset('precision')"
+            >
               🎯 高精度模式
             </button>
           </div>
@@ -357,7 +369,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import api from '../api';
 
 const emit = defineEmits(['close', 'settings-changed']);
@@ -448,6 +460,7 @@ const embeddingOptions = ref([
 
 const cacheSize = ref(0);
 const cacheMaxSize = ref(256);
+const currentPreset = ref('balanced'); // 当前选中的预设模式
 
 // 选择 LLM 模型
 function selectModel(modelValue) {
@@ -461,6 +474,8 @@ function selectEmbedding(modelValue) {
 
 // 应用检索预设
 function applyPreset(preset) {
+  currentPreset.value = preset; // 更新当前选中的预设
+  
   switch (preset) {
     case 'balanced': // 平衡模式：默认推荐
       settings.value.topK = 8;
@@ -487,7 +502,6 @@ function applyPreset(preset) {
       settings.value.bm25Enabled = true;
       break;
   }
-  alert(`已应用 ${preset === 'balanced' ? '平衡' : preset === 'recall' ? '高召回' : '高精度'} 模式预设`);
 }
 
 // 加载设置
@@ -523,12 +537,17 @@ function saveSettings() {
   emit('close');
 }
 
-// 主题切换
+// 主题切换（通过 watch 自动触发）
 function toggleTheme() {
   const theme = settings.value.darkMode ? 'dark' : 'light';
   localStorage.setItem('theme', theme);
   document.documentElement.setAttribute('data-theme', theme);
 }
+
+// 监听主题变化
+watch(() => settings.value.darkMode, (newValue) => {
+  toggleTheme();
+});
 
 // 加载缓存统计
 async function loadCacheStats() {
@@ -926,6 +945,19 @@ onMounted(async () => {
   color: #3b82f6;
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+}
+
+.preset-btn.active {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-color: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  font-weight: 600;
+}
+
+.preset-btn.active:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-1px);
 }
 
 /* 模型选择卡片 */
