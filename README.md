@@ -14,9 +14,11 @@
 - 💾 **灵活存储**：Milvus 云原生 / FAISS 本地，自动回退
 - 🔐 **多租户**：命名空间隔离 + API Key 鉴权
 - 📄 **文档解析**：支持 `.txt`, `.md`, `.pdf`，智能分块
-- 🌐 **现代前端**：Vue 3 + Vite，组件化架构，代码高亮
+- 🌐 **现代前端**：Vue 3 + Vite，组件化架构，代码高亮，原生暗黑模式
 - 📊 **可观测性**：结构化日志、健康检查、监控指标
 - 🐳 **易部署**：Docker Compose 一键启动
+-. 🧩 **模型可选**：设置里卡片式选择 DeepSeek / Qwen 等兼容模型
+-. 🔎 **联网搜索（可选）**：可将实时搜索结果并入上下文（Serper / DuckDuckGo）
 
 ## 🏗️ 架构
 
@@ -64,17 +66,30 @@ npm install
 # 大模型配置（OpenAI 兼容）
 OPENAI_API_KEY=sk-your-key
 OPENAI_BASE_URL=https://api.deepseek.com/v1  # 或其他兼容服务
-RAG_MODEL=deepseek-chat
+
+# 可用模型（逗号分隔），前端将用来渲染模型卡片
+AVAILABLE_MODELS=deepseek-chat,qwen-turbo,qwen-plus,qwen-max
+
+# Qwen 兼容配置（可选，若使用阿里灵积）
+QWEN_API_KEY=sk-your-qwen-key
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 
 # 向量存储（auto 自动选择 Milvus/FAISS）
 VECTOR_BACKEND=auto
 MILVUS_HOST=127.0.0.1
 MILVUS_PORT=19530
 
-# 检索参数
-RAG_TOP_K=4
+# 检索参数（推荐默认）
+RAG_TOP_K=8
 RAG_BM25_ENABLED=true
+RAG_BM25_WEIGHT=0.4
+RAG_VEC_WEIGHT=0.6
+RAG_MMR_LAMBDA=0.7
 RAG_RERANKER_ENABLED=false
+
+# 联网搜索（可选）
+RAG_WEB_SEARCH_ENABLED=false
+SERPER_API_KEY=
 
 # 多租户与鉴权
 RAG_NAMESPACE=default
@@ -113,6 +128,7 @@ npm run dev  # 访问 http://localhost:5173
 - `POST /docs` - 上传文档
 - `DELETE /docs?path=xxx` - 删除文档
 - `GET /docs/paths` - 列出已入库路径
+- `GET /models` - 返回可用大模型列表
 - `POST /namespaces/create` - 创建命名空间
 - `GET /healthz` - 健康检查
 
@@ -136,7 +152,14 @@ import requests
 
 response = requests.post(
     "http://localhost:8000/ask_stream",
-    json={"question": "什么是 RAG？", "top_k": 4},
+    json={
+        "question": "什么是 RAG？",
+        "top_k": 8,
+        "model": "deepseek-chat",          # 可选
+        "system_prompt": "请用清晰小节回答：\n{context}\n问题：{question}",
+        "web_enabled": true,                 # 可选
+        "web_top_k": 3
+    },
     headers={"X-API-Key": "your-key"},  # 可选
     stream=True
 )
@@ -149,9 +172,16 @@ for line in response.iter_lines():
 ### cURL
 
 ```bash
-curl -X POST http://localhost:8000/ask \
+curl -X POST http://localhost:8000/ask_stream \
   -H "Content-Type: application/json" \
-  -d '{"question": "介绍一下系统功能", "top_k": 4}'
+  -d '{
+    "question": "介绍一下系统功能",
+    "top_k": 8,
+    "model": "qwen-plus",
+    "system_prompt": "{context}\n\n请基于以上内容回答：{question}",
+    "web_enabled": true,
+    "web_top_k": 3
+  }'
 ```
 
 ## 🛠️ 高级配置
