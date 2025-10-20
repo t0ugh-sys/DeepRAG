@@ -254,18 +254,21 @@ onMounted(() => {
 .chat {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   background: #ffffff;
+  overflow: hidden; /* 防止内容溢出 */
 }
 
 .messages {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px;
   background: #ffffff;
   display: flex;
   flex-direction: column;
   align-items: center;
+  min-height: 0; /* 确保 flex item 可以缩小 */
 }
 
 .messages > * {
@@ -414,6 +417,7 @@ onMounted(() => {
 }
 
 .composer {
+  flex-shrink: 0; /* 输入框不会被压缩 */
   border-top: 1px solid #e5e7eb;
   padding: 16px 24px 24px;
   background: #ffffff;
