@@ -52,12 +52,36 @@
     
     <div class="composer">
       <div class="input-wrapper">
-        <!-- 模型选择器嵌入输入框左侧 -->
-        <select v-model="selectedModel" class="model-selector">
-          <option v-for="model in availableModels" :key="model.value" :value="model.value">
-            {{ model.icon }} {{ model.name }}
-          </option>
-        </select>
+        <!-- 模型选择器 - 美化版 -->
+        <div class="model-selector-wrapper">
+          <button class="model-selector-btn" @click="toggleModelDropdown">
+            <span class="model-icon">{{ getCurrentModel().icon }}</span>
+            <span class="model-name">{{ getCurrentModel().name }}</span>
+            <svg class="dropdown-arrow" :class="{ open: showModelDropdown }" width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          
+          <div v-if="showModelDropdown" class="model-dropdown" @click.stop>
+            <div class="dropdown-header">选择模型</div>
+            <div 
+              v-for="model in availableModels" 
+              :key="model.value" 
+              class="model-option"
+              :class="{ active: selectedModel === model.value }"
+              @click="selectModelAndClose(model.value)"
+            >
+              <span class="option-icon">{{ model.icon }}</span>
+              <div class="option-content">
+                <div class="option-name">{{ model.name }}</div>
+                <div class="option-desc">{{ model.desc }}</div>
+              </div>
+              <svg v-if="selectedModel === model.value" class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+        </div>
         
         <textarea
           v-model="question" 
@@ -92,11 +116,12 @@ const streamingContent = ref('');
 const messagesEl = ref(null);
 const textareaEl = ref(null);
 const selectedModel = ref('deepseek-chat');
+const showModelDropdown = ref(false);
 const availableModels = ref([
-  { value: 'deepseek-chat', name: 'DeepSeek Chat', icon: '🚀' },
-  { value: 'qwen-turbo', name: 'Qwen Turbo', icon: '⚡' },
-  { value: 'qwen-plus', name: 'Qwen Plus', icon: '✨' },
-  { value: 'qwen-max', name: 'Qwen Max', icon: '🎯' }
+  { value: 'deepseek-chat', name: 'DeepSeek', icon: '🚀', desc: '高性价比推理' },
+  { value: 'qwen-turbo', name: 'Qwen Turbo', icon: '⚡', desc: '极速响应' },
+  { value: 'qwen-plus', name: 'Qwen Plus', icon: '✨', desc: '平衡性能' },
+  { value: 'qwen-max', name: 'Qwen Max', icon: '🎯', desc: '旗舰模型' }
 ]);
 
 watch(question, () => {
@@ -129,6 +154,29 @@ function renderMsg(msg) {
   }
   return (msg.content || '').replace(/\n/g, '<br>');
 }
+
+function getCurrentModel() {
+  return availableModels.value.find(m => m.value === selectedModel.value) || availableModels.value[0];
+}
+
+function toggleModelDropdown() {
+  showModelDropdown.value = !showModelDropdown.value;
+}
+
+function selectModelAndClose(modelValue) {
+  selectedModel.value = modelValue;
+  showModelDropdown.value = false;
+  localStorage.setItem('selectedModel', modelValue);
+}
+
+// 点击外部关闭下拉菜单
+onMounted(() => {
+  document.addEventListener('click', (e) => {
+    if (showModelDropdown.value) {
+      showModelDropdown.value = false;
+    }
+  });
+});
 
 async function sendQuestion() {
   if (!question.value.trim() || loading.value) return;
@@ -496,6 +544,147 @@ onMounted(() => {
   border-color: #111827;
   background: #ffffff;
   box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.05);
+}
+
+/* 模型选择器 */
+.model-selector-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.model-selector-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.model-selector-btn:hover {
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.model-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.model-name {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.dropdown-arrow {
+  color: #64748b;
+  transition: transform 0.2s;
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+/* 下拉菜单 */
+.model-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 240px;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  overflow: hidden;
+  animation: dropdownSlideIn 0.2s ease-out;
+}
+
+@keyframes dropdownSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-header {
+  padding: 12px 16px;
+  background: linear-gradient(to right, #f8fafc, #f1f5f9);
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.model-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.model-option:last-child {
+  border-bottom: none;
+}
+
+.model-option:hover {
+  background: #f8fafc;
+}
+
+.model-option.active {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-left: 3px solid #3b82f6;
+}
+
+.option-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.option-content {
+  flex: 1;
+}
+
+.option-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 2px;
+}
+
+.option-desc {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.model-option.active .option-name {
+  color: #1e40af;
+}
+
+.model-option.active .option-desc {
+  color: #3b82f6;
+}
+
+.check-icon {
+  color: #3b82f6;
+  flex-shrink: 0;
 }
 
 textarea {
