@@ -2,7 +2,7 @@ from typing import List, Any, Dict
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi import UploadFile, File, Form
@@ -273,40 +273,68 @@ class UpsertDocRequest(_BaseModel):
 
 
 @app.post("/docs")
-def upsert_doc(req: UpsertDocRequest | None = None, file: UploadFile = File(None), path: str = Form(None), x_api_key: str | None = None, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
+async def upsert_doc(
+    request: Request,
+    req: UpsertDocRequest | None = None, 
+    file: UploadFile = File(None), 
+    path: str = Form(None), 
+    x_api_key: str | None = None, 
+    namespace: str | None = None
+) -> JSONResponse:  # type: ignore[override]
     _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
+    
     try:
         final_path: str | None = None
         text: str | None = None
-        if req is not None and req.path:
-            final_path = req.path
-            text = req.text
-        elif file is not None and path is not None:
-            final_path = path
-            raw = file.file.read()
-            name = (file.filename or '').lower()
-            if name.endswith('.pdf'):
-                try:
-                    from pdfminer_high_level import extract_text  # type: ignore
-                except Exception:
-                    from pdfminer.high_level import extract_text  # fallback
-                # 临时存盘再解析，避免流处理复杂度
-                import tempfile
-                with tempfile.NamedTemporaryFile(suffix='.pdf', delete=True) as tmp:
-                    tmp.write(raw)
-                    tmp.flush()
-                    text = extract_text(tmp.name)
+        
+        # 检查 Content-Type 来决定如何解析请求
+        content_type = request.headers.get("content-type", "")
+        
+        # 如果是 JSON 请求
+        if "application/json" in content_type:
+            try:
+                body = await request.json()
+                final_path = body.get("path")
+                text = body.get("text")
+                if not final_path:
+                    return JSONResponse({"ok": False, "error": "缺少 path 字段"}, status_code=400)
+            except Exception as e:
+                logger.error(f"解析 JSON 失败: {e}")
+                return JSONResponse({"ok": False, "error": f"JSON 解析失败: {str(e)}"}, status_code=400)
+        
+        # 如果是 multipart/form-data
+        elif "multipart/form-data" in content_type:
+            if file is not None and path is not None:
+                final_path = path
+                raw = await file.read()
+                name = (file.filename or '').lower()
+                if name.endswith('.pdf'):
+                    try:
+                        from pdfminer.high_level import extract_text
+                    except Exception:
+                        from pdfminer.high_level import extract_text
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=True) as tmp:
+                        tmp.write(raw)
+                        tmp.flush()
+                        text = extract_text(tmp.name)
+                else:
+                    try:
+                        text = raw.decode("utf-8", errors="ignore")
+                    except Exception:
+                        text = ""
             else:
-                try:
-                    text = raw.decode("utf-8", errors="ignore")
-                except Exception:
-                    text = ""
+                return JSONResponse({"ok": False, "error": "multipart 请求需要 file 和 path"}, status_code=400)
+        
         else:
-            return JSONResponse({"ok": False, "error": "need JSON{path,text} or multipart file+path"}, status_code=400)
+            return JSONResponse({"ok": False, "error": f"不支持的 Content-Type: {content_type}"}, status_code=400)
+        
+        if not final_path or text is None:
+            return JSONResponse({"ok": False, "error": "path 或 text 为空"}, status_code=400)
         added = local.add_document(final_path, text or "")
         logger.info(f"✓ 文档上传成功: {final_path}, 新增 {added} 个分片")
         return JSONResponse({"ok": True, "added_chunks": added})
