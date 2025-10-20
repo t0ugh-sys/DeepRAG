@@ -24,14 +24,14 @@ export default {
   getModels: () => api.get('/models'),
   
   // 提问（流式）
-  askStream: (question, model, top_k = 4) => 
+  askStream: (question, model, top_k = 4, system_prompt = null) => 
     fetch(`${BASE_URL}/ask_stream?namespace=${localStorage.getItem('ns') || ''}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-API-Key': localStorage.getItem('apikey') || '',
       },
-      body: JSON.stringify({ question, model, top_k }),
+      body: JSON.stringify({ question, model, top_k, system_prompt }),
     }),
 
   // 命名空间管理

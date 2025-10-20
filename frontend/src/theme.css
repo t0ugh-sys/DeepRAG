@@ -1,5 +1,5 @@
 /* 全局主题变量 */
-:root[data-theme="light"] {
+:root {
   --bg-primary: #ffffff;
   --bg-secondary: #f7f8fa;
   --bg-tertiary: #f3f4f6;
@@ -15,7 +15,7 @@
   --warning: #f59e0b;
 }
 
-:root[data-theme="dark"] {
+[data-theme="dark"] {
   --bg-primary: #1a1a1a;
   --bg-secondary: #262626;
   --bg-tertiary: #333333;
@@ -29,6 +29,16 @@
   --success: #22c55e;
   --danger: #ef4444;
   --warning: #fbbf24;
+}
+
+/* 应用主题到根元素和body */
+html, body {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.app-container {
+  background-color: var(--bg-secondary);
 }
 
 * {

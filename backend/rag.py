@@ -354,7 +354,7 @@ class VectorStore:
         return result
 
 
-def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: bool = True) -> str:
+def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: bool = True, custom_system_prompt: str | None = None) -> str:
     """
     构建 RAG 提示词
     
@@ -362,6 +362,7 @@ def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: boo
         question: 用户问题
         contexts: 检索到的上下文片段
         strict_mode: 严格模式。True=仅基于知识库回答；False=允许模型自由发挥
+        custom_system_prompt: 自定义系统提示词，会替换{context}和{question}占位符
     """
     # 检查是否有有效的上下文（分数阈值或为空）
     has_valid_context = len(contexts) > 0 and any(c.score > 0.1 for c in contexts)
@@ -389,6 +390,12 @@ def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: boo
         context_blocks.append(f"[文档{i}: {filename}]\n{c.text}")
     context_text = "\n\n".join(context_blocks)
     
+    # 如果有自定义提示词，使用它并替换占位符
+    if custom_system_prompt:
+        prompt = custom_system_prompt.replace("{context}", context_text).replace("{question}", question)
+        return prompt
+    
+    # 否则使用默认提示词
     if strict_mode:
         system_instruction = (
             "你是一个专业的知识库检索助手。\n\n"
@@ -497,7 +504,7 @@ class RAGPipeline:
         answer = resp.choices[0].message.content or ""
         return answer, recs
 
-    def ask_stream(self, question: str, top_k: int | None = None, rerank_enabled: bool | None = None, rerank_top_n: int | None = None, model: str | None = None):  # noqa: ANN001
+    def ask_stream(self, question: str, top_k: int | None = None, rerank_enabled: bool | None = None, rerank_top_n: int | None = None, model: str | None = None, system_prompt: str | None = None):  # noqa: ANN001
         """返回(生成器, 检索片段)。生成器逐块产出模型文本。"""
         k = top_k or self.settings.top_k
         recs = self.store.search(question, k)
@@ -509,7 +516,7 @@ class RAGPipeline:
             for r, s in zip(recs, scores):
                 r.score = float(s)
             recs = sorted(recs, key=lambda x: x.score, reverse=True)[: top_n]
-        prompt = build_prompt(question, recs, strict_mode=self.settings.strict_mode)
+        prompt = build_prompt(question, recs, strict_mode=self.settings.strict_mode, custom_system_prompt=system_prompt)
         target_model = model or self.settings.llm_model
         client = self._get_client_for_model(target_model)
 

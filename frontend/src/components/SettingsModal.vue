@@ -700,9 +700,12 @@ function loadSettings() {
     }
   }
   
-  // 检查主题
+  // 检查主题并立即应用
   const theme = localStorage.getItem('theme');
   settings.value.darkMode = theme === 'dark';
+  
+  // 立即应用主题到 DOM
+  document.documentElement.setAttribute('data-theme', theme || 'light');
 }
 
 // 保存设置

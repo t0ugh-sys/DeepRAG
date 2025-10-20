@@ -62,6 +62,7 @@ class AskRequest(BaseModel):
     rerank_enabled: bool | None = None
     rerank_top_n: int | None = None
     model: str | None = None
+    system_prompt: str | None = None
 
 
 class SourceItem(BaseModel):
@@ -276,7 +277,14 @@ def ask_stream(req: AskRequest, x_api_key: str | None = None, namespace: str | N
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化，请检查服务日志")
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
-    gen, recs = local.ask_stream(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n, req.model)
+    gen, recs = local.ask_stream(
+        req.question, 
+        req.top_k, 
+        req.rerank_enabled, 
+        req.rerank_top_n, 
+        req.model,
+        system_prompt=req.system_prompt
+    )
 
     def sse():  # noqa: ANN202
         yield f"event: meta\ndata: {len(recs)}\n\n"

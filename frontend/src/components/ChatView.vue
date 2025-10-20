@@ -208,8 +208,12 @@ async function sendQuestion() {
   // 使用选中的模型
   const model = selectedModel.value;
   
+  // 从 localStorage 获取系统提示词
+  const settings = JSON.parse(localStorage.getItem('app-settings') || '{}');
+  const systemPrompt = settings.systemPrompt;
+  
   try {
-    const res = await api.askStream(q, model, 4);
+    const res = await api.askStream(q, model, 4, systemPrompt);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let answer = '';
