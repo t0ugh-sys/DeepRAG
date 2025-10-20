@@ -38,17 +38,33 @@
             </div>
           </div>
           
-          <div class="setting-item" style="margin-top: 20px;">
-            <label class="setting-label">
-              <span>嵌入模型</span>
-              <span class="label-desc">用于文本向量化的模型</span>
+          <div class="model-selection" style="margin-top: 24px;">
+            <label class="selection-label">
+              <span>选择嵌入模型</span>
+              <span class="label-desc">用于文本向量化，影响检索质量</span>
             </label>
-            <input 
-              v-model="settings.embeddingModel" 
-              type="text" 
-              class="setting-input"
-              placeholder="例如: BAAI/bge-large-zh-v1.5"
-            />
+            <div class="embedding-cards">
+              <div 
+                v-for="model in embeddingOptions" 
+                :key="model.value"
+                class="embedding-card"
+                :class="{ active: settings.embeddingModel === model.value }"
+                @click="selectEmbedding(model.value)"
+              >
+                <div class="embedding-info">
+                  <div class="embedding-icon">{{ model.icon }}</div>
+                  <div class="embedding-details">
+                    <div class="embedding-name">{{ model.name }}</div>
+                    <div class="embedding-desc">{{ model.desc }}</div>
+                  </div>
+                </div>
+                <div class="model-check" v-if="settings.embeddingModel === model.value">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         
@@ -390,12 +406,57 @@ const modelOptions = ref([
     icon: '🎯'
   }
 ]);
+
+const embeddingOptions = ref([
+  {
+    value: 'sentence-transformers/all-MiniLM-L6-v2',
+    name: 'MiniLM-L6',
+    desc: '轻量快速，适合快速测试',
+    icon: '💨'
+  },
+  {
+    value: 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+    name: 'Multilingual-MiniLM',
+    desc: '多语言支持，中英文通用',
+    icon: '🌏'
+  },
+  {
+    value: 'BAAI/bge-small-zh-v1.5',
+    name: 'BGE-Small-ZH',
+    desc: '中文优化，性能均衡',
+    icon: '🇨🇳'
+  },
+  {
+    value: 'BAAI/bge-base-zh-v1.5',
+    name: 'BGE-Base-ZH',
+    desc: '中文基础模型，推荐使用',
+    icon: '⭐'
+  },
+  {
+    value: 'BAAI/bge-large-zh-v1.5',
+    name: 'BGE-Large-ZH',
+    desc: '中文最强效果，质量最高',
+    icon: '🏆'
+  },
+  {
+    value: 'moka-ai/m3e-base',
+    name: 'M3E-Base',
+    desc: '中文开源模型，效果优秀',
+    icon: '🔥'
+  }
+]);
+
 const cacheSize = ref(0);
 const cacheMaxSize = ref(256);
 
-// 选择模型
+// 选择 LLM 模型
 function selectModel(modelValue) {
   settings.value.llmModel = modelValue;
+}
+
+// 选择嵌入模型
+function selectEmbedding(modelValue) {
+  settings.value.embeddingModel = modelValue;
 }
 
 // 应用检索预设
@@ -872,6 +933,78 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* 嵌入模型卡片 */
+.embedding-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.embedding-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.embedding-card:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.embedding-card.active {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.embedding-card.active:hover {
+  background: #dbeafe;
+}
+
+.embedding-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.embedding-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.embedding-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.embedding-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 2px;
+}
+
+.embedding-desc {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.3;
 }
 
 .selection-label {
