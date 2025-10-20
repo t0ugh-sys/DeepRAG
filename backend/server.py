@@ -308,9 +308,13 @@ def upsert_doc(req: UpsertDocRequest | None = None, file: UploadFile = File(None
         else:
             return JSONResponse({"ok": False, "error": "need JSON{path,text} or multipart file+path"}, status_code=400)
         added = local.add_document(final_path, text or "")
+        logger.info(f"✓ 文档上传成功: {final_path}, 新增 {added} 个分片")
         return JSONResponse({"ok": True, "added_chunks": added})
     except Exception as e:
         # 在 FAISS 模式下，add_document 会抛出错误；改为返回 400 与提示
+        logger.error(f"✗ 文档上传失败: {final_path}, 错误: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 

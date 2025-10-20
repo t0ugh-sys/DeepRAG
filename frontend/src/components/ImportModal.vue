@@ -126,6 +126,7 @@ async function uploadFiles() {
   
   let successCount = 0;
   let failCount = 0;
+  const errors = [];
   
   for (const file of files.value) {
     try {
@@ -139,9 +140,12 @@ async function uploadFiles() {
         successCount++;
       } else {
         failCount++;
+        errors.push(`${file.name}: ${res.data.error || '未知错误'}`);
       }
     } catch (e) {
       failCount++;
+      errors.push(`${file.name}: ${e.message || '请求失败'}`);
+      console.error(`上传失败 ${file.name}:`, e);
     }
   }
   
@@ -157,7 +161,7 @@ async function uploadFiles() {
       emit('close');
     }, 2000);
   } else {
-    message.value = `上传完成。成功: ${successCount} 个，失败: ${failCount} 个`;
+    message.value = `上传完成。成功: ${successCount} 个，失败: ${failCount} 个\n\n错误详情:\n${errors.join('\n')}`;
     isError.value = true;
   }
 }
