@@ -253,36 +253,93 @@
         </div>
         
         <!-- 提示词设置 -->
-        <div class="setting-section">
-          <h4 class="section-title">💬 提示词配置</h4>
+        <div class="setting-section prompt-section">
+          <div class="section-header">
+            <h4 class="section-title">
+              <span class="title-icon">✨</span>
+              <span>提示词工坊</span>
+            </h4>
+            <span class="section-badge">自定义 AI 行为</span>
+          </div>
           
-          <div class="setting-item">
-            <label class="setting-label">
-              <span>系统提示词</span>
-              <span class="label-desc">自定义 AI 的回答风格和行为规则</span>
-            </label>
+          <div class="preset-prompts-top">
+            <button 
+              class="preset-prompt-card" 
+              :class="{ active: currentPromptPreset === 'default' }"
+              @click="applyPromptPreset('default')"
+            >
+              <div class="card-icon">📝</div>
+              <div class="card-content">
+                <div class="card-title">默认助手</div>
+                <div class="card-desc">专业、准确、格式规范</div>
+              </div>
+            </button>
+            <button 
+              class="preset-prompt-card" 
+              :class="{ active: currentPromptPreset === 'detailed' }"
+              @click="applyPromptPreset('detailed')"
+            >
+              <div class="card-icon">📚</div>
+              <div class="card-content">
+                <div class="card-title">详细解答</div>
+                <div class="card-desc">深入全面、技术文档</div>
+              </div>
+            </button>
+            <button 
+              class="preset-prompt-card" 
+              :class="{ active: currentPromptPreset === 'concise' }"
+              @click="applyPromptPreset('concise')"
+            >
+              <div class="card-icon">⚡</div>
+              <div class="card-content">
+                <div class="card-title">简洁模式</div>
+                <div class="card-desc">快速直接、要点明确</div>
+              </div>
+            </button>
+          </div>
+          
+          <div class="prompt-editor-wrapper">
+            <div class="editor-header">
+              <span class="editor-label">
+                <span class="label-icon">🎯</span>
+                系统提示词
+              </span>
+              <div class="editor-actions">
+                <button class="action-btn" @click="formatPrompt" title="格式化">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M4 7h16M4 12h16M4 17h10" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </button>
+                <button class="action-btn" @click="resetPrompt" title="重置">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M21 3v5h-5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
             <textarea 
               v-model="settings.systemPrompt" 
               class="prompt-textarea"
-              rows="8"
-              placeholder="你是一个专业的知识库检索助手..."
+              rows="12"
+              placeholder="编写你的系统提示词..."
+              spellcheck="false"
             ></textarea>
-            <div class="prompt-tips">
-              <span class="tip-item">💡 提示：使用 {context} 表示检索到的文档内容</span>
-              <span class="tip-item">💡 使用 {question} 表示用户的问题</span>
+            <div class="editor-footer">
+              <div class="prompt-hints">
+                <span class="hint-badge">
+                  <span class="hint-icon">💡</span>
+                  使用 <code>{context}</code> 插入检索内容
+                </span>
+                <span class="hint-badge">
+                  <span class="hint-icon">💬</span>
+                  使用 <code>{question}</code> 插入用户问题
+                </span>
+              </div>
+              <div class="char-count">
+                {{ settings.systemPrompt.length }} 字符
+              </div>
             </div>
-          </div>
-          
-          <div class="preset-prompts">
-            <button class="preset-prompt-btn" @click="applyPromptPreset('default')">
-              📝 默认提示词
-            </button>
-            <button class="preset-prompt-btn" @click="applyPromptPreset('detailed')">
-              📚 详细解答
-            </button>
-            <button class="preset-prompt-btn" @click="applyPromptPreset('concise')">
-              ⚡ 简洁回答
-            </button>
           </div>
         </div>
         
@@ -440,6 +497,7 @@ const settings = ref({
 5. 避免句子过长，适当断句`
 });
 
+const currentPromptPreset = ref('default');
 const availableModels = ref(['deepseek-chat', 'qwen-turbo', 'qwen-plus', 'qwen-max']);
 const modelOptions = ref([
   {
@@ -521,8 +579,22 @@ function selectEmbedding(modelValue) {
   settings.value.embeddingModel = modelValue;
 }
 
+// 格式化提示词
+function formatPrompt() {
+  // 简单的格式化：移除多余空行
+  settings.value.systemPrompt = settings.value.systemPrompt
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// 重置提示词
+function resetPrompt() {
+  applyPromptPreset('default');
+}
+
 // 应用提示词预设
 function applyPromptPreset(preset) {
+  currentPromptPreset.value = preset;
   switch (preset) {
     case 'default':
       settings.value.systemPrompt = `你是一个专业的知识库检索助手。
@@ -1063,74 +1135,246 @@ onMounted(async () => {
   transform: translateY(-1px);
 }
 
-/* 提示词配置 */
+/* 提示词配置区域 */
+.prompt-section {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 2px solid #e2e8f0;
+  padding: 24px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.title-icon {
+  font-size: 20px;
+}
+
+.section-badge {
+  padding: 4px 12px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 预设提示词卡片 */
+.preset-prompts-top {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.preset-prompt-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.preset-prompt-card:hover {
+  border-color: #3b82f6;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(59, 130, 246, 0.15);
+}
+
+.preset-prompt-card.active {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-color: #2563eb;
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.35);
+  transform: translateY(-2px);
+}
+
+.preset-prompt-card.active .card-icon {
+  font-size: 28px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.preset-prompt-card.active .card-title,
+.preset-prompt-card.active .card-desc {
+  color: white;
+}
+
+.card-icon {
+  font-size: 24px;
+  transition: all 0.25s;
+}
+
+.card-content {
+  flex: 1;
+  text-align: left;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 2px;
+  transition: color 0.25s;
+}
+
+.card-desc {
+  font-size: 11px;
+  color: #64748b;
+  transition: color 0.25s;
+}
+
+/* 编辑器容器 */
+.prompt-editor-wrapper {
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(to right, #f8fafc, #f1f5f9);
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.editor-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.label-icon {
+  font-size: 16px;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.action-btn {
+  padding: 6px 8px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #64748b;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #3b82f6;
+  transform: translateY(-1px);
+}
+
+/* 文本编辑区 */
 .prompt-textarea {
   width: 100%;
-  padding: 12px;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 8px;
+  padding: 16px;
+  border: none;
   font-size: 13px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', 'Liberation Mono', monospace;
   line-height: 1.6;
   resize: vertical;
-  min-height: 200px;
-  background: #f9fafb;
-  color: #374151;
+  min-height: 280px;
+  background: #ffffff;
+  color: #1e293b;
   transition: all 0.2s;
 }
 
 .prompt-textarea:focus {
   outline: none;
-  border-color: #3b82f6;
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  background: #fafbfc;
 }
 
-.prompt-tips {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
+.prompt-textarea::placeholder {
+  color: #94a3b8;
 }
 
-.tip-item {
-  font-size: 12px;
-  color: #6b7280;
+/* 编辑器底部 */
+.editor-footer {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #f8fafc;
+  border-top: 1px solid #e5e7eb;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.preset-prompts {
+.prompt-hints {
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
-.preset-prompt-btn {
-  flex: 1;
-  min-width: 140px;
-  padding: 10px 16px;
-  background: #f3f4f6;
-  border: 1.5px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-  cursor: pointer;
-  transition: all 0.2s;
+.hint-badge {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  gap: 4px;
+  padding: 4px 10px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #64748b;
 }
 
-.preset-prompt-btn:hover {
-  background: #e5e7eb;
-  border-color: #9ca3af;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+.hint-icon {
+  font-size: 13px;
+}
+
+.hint-badge code {
+  padding: 2px 6px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-family: 'SF Mono', monospace;
+  font-size: 11px;
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.char-count {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+  padding: 4px 8px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
 }
 
 /* 模型选择卡片 */
