@@ -65,8 +65,8 @@ function formatTime(ts) {
 <style scoped>
 .sidebar {
   width: 260px;
-  background: #ffffff;
-  border-right: 1px solid #e5e7eb;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-primary);
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -75,14 +75,14 @@ function formatTime(ts) {
 
 .sidebar-header { 
   padding: 16px 20px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .logo {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .logo-text {
@@ -94,8 +94,8 @@ function formatTime(ts) {
 .new-chat-btn {
   margin: 12px 16px;
   padding: 10px 16px;
-  background: #f7f8fa;
-  border: 1px solid #e5e7eb;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -103,14 +103,14 @@ function formatTime(ts) {
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  color: #374151;
+  color: var(--text-primary);
   transition: all 0.2s;
   width: calc(100% - 32px);
 }
 
 .new-chat-btn:hover {
-  background: #ffffff;
-  border-color: #d1d5db;
+  background: var(--bg-primary);
+  border-color: var(--border-secondary);
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
@@ -125,14 +125,14 @@ function formatTime(ts) {
 }
 
 .conv-list::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--border-secondary);
   border-radius: 2px;
 }
 
 .conv-section-title {
   font-size: 12px;
   font-weight: 600;
-  color: #9ca3af;
+  color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: 8px 12px 8px;
@@ -148,18 +148,18 @@ function formatTime(ts) {
   cursor: pointer;
   transition: all 0.15s;
   margin-bottom: 2px;
-  color: #6b7280;
+  color: var(--text-secondary);
   position: relative;
 }
 
 .conv-item:hover {
-  background: #f9fafb;
-  color: #374151;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .conv-item.active {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -179,13 +179,13 @@ function formatTime(ts) {
 
 .conv-time {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--text-tertiary);
   flex-shrink: 0;
   transition: opacity 0.2s;
 }
 
 .conv-item.active .conv-time {
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .delete-btn {
@@ -194,7 +194,7 @@ function formatTime(ts) {
   border-radius: 4px;
   border: none;
   background: transparent;
-  color: #9ca3af;
+  color: var(--text-tertiary);
   cursor: pointer;
   display: none;
   align-items: center;
@@ -213,8 +213,8 @@ function formatTime(ts) {
 }
 
 .delete-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
+  background: rgba(220,38,38,0.1);
+  color: var(--danger);
 }
 </style>
 

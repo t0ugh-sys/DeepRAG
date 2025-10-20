@@ -483,24 +483,24 @@ onMounted(() => {
 .msg-text {
   font-size: 15px;
   line-height: 1.7;
-  color: #374151;
+  color: var(--text-primary);
   word-wrap: break-word;
 }
 
 .message.user .msg-text {
   background: #f0f9ff; /* 浅蓝色背景 */
-  color: #1e40af;
+  color: var(--text-primary);
   padding: 12px 16px;
   border-radius: 12px;
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--border-primary);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .composer {
   flex-shrink: 0; /* 输入框不会被压缩 */
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--border-primary);
   padding: 16px 24px 24px;
-  background: #ffffff;
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -587,7 +587,7 @@ onMounted(() => {
 
 .model-selector-btn:hover {
   background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-  border-color: #cbd5e1;
+  border-color: var(--border-secondary);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
@@ -598,7 +598,7 @@ onMounted(() => {
 
 .model-name {
   font-weight: 600;
-  color: #1e293b;
+  color: var(--text-primary);
 }
 
 .dropdown-arrow {
@@ -639,10 +639,10 @@ onMounted(() => {
 .dropdown-header {
   padding: 12px 16px;
   background: linear-gradient(to right, #f8fafc, #f1f5f9);
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border-primary);
   font-size: 12px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -682,13 +682,13 @@ onMounted(() => {
 .option-name {
   font-size: 14px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--text-primary);
   margin-bottom: 2px;
 }
 
 .option-desc {
   font-size: 11px;
-  color: #64748b;
+  color: var(--text-secondary);
 }
 
 .model-option.active .option-name {

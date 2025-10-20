@@ -97,8 +97,8 @@ onMounted(() => {
   align-items: center;
   justify-content: flex-end;
   padding: 12px 24px;
-  border-bottom: 1px solid #f0f0f0;
-  background: #ffffff;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-primary);
 }
 
 .header-actions {
@@ -113,7 +113,7 @@ onMounted(() => {
   border-radius: 8px;
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -122,14 +122,14 @@ onMounted(() => {
 }
 
 .icon-btn:hover {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .divider {
   width: 1px;
   height: 20px;
-  background: #e5e7eb;
+  background: var(--border-primary);
   margin: 0 4px;
 }
 
