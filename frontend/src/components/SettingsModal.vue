@@ -563,6 +563,7 @@ async function loadAvailableModels() {
         'qwen-max': { name: 'Qwen Max', desc: '最强性能，复杂任务首选', icon: '🎯' },
         'gpt-4': { name: 'GPT-4', desc: 'OpenAI 最强模型', icon: '🤖' },
         'gpt-4o': { name: 'GPT-4o', desc: 'OpenAI 多模态模型', icon: '🌟' },
+        'gpt-4o-mini': { name: 'GPT-4o Mini', desc: 'OpenAI 轻量模型', icon: '💫' },
         'gpt-3.5-turbo': { name: 'GPT-3.5 Turbo', desc: '快速且经济', icon: '💨' }
       };
       
@@ -574,9 +575,20 @@ async function loadAvailableModels() {
         icon: modelConfigMap[model]?.icon || '🔮'
       }));
       
-      // 如果当前模型不在列表中，设置为默认模型
+      // 如果当前模型不在列表中，设置为默认模型并保存
       if (!availableModels.value.includes(settings.value.llmModel)) {
         settings.value.llmModel = res.data.default_model || availableModels.value[0];
+        // 立即保存到 localStorage，避免显示旧模型
+        const saved = localStorage.getItem('app-settings');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            parsed.llmModel = settings.value.llmModel;
+            localStorage.setItem('app-settings', JSON.stringify(parsed));
+          } catch (e) {
+            console.error('更新模型设置失败:', e);
+          }
+        }
       }
     }
   } catch (e) {
@@ -584,10 +596,11 @@ async function loadAvailableModels() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 先加载模型列表，再加载设置，确保模型验证正确
+  await loadAvailableModels();
   loadSettings();
   loadCacheStats();
-  loadAvailableModels();
 });
 </script>
 
