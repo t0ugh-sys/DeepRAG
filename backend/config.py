@@ -55,7 +55,7 @@ class Settings:
     available_models: str = os.getenv("AVAILABLE_MODELS", "deepseek-chat,qwen-turbo,qwen-plus,qwen-max")
 
     # 检索参数
-    top_k: int = int(os.getenv("RAG_TOP_K", "4"))
+    top_k: int = int(os.getenv("RAG_TOP_K", "8"))  # 增加默认检索数量
 
     # Reranker 配置
     reranker_enabled: bool = os.getenv("RAG_RERANKER_ENABLED", "false").lower() in {"1", "true", "yes"}
@@ -80,10 +80,10 @@ class Settings:
 
     # 检索质量参数
     bm25_enabled: bool = os.getenv("RAG_BM25_ENABLED", "true").lower() in {"1", "true", "yes"}
-    bm25_weight: float = float(os.getenv("RAG_BM25_WEIGHT", "0.35"))
-    vec_weight: float = float(os.getenv("RAG_VEC_WEIGHT", "0.65"))
-    score_threshold: float = float(os.getenv("RAG_SCORE_THRESHOLD", "0.0"))  # 过滤过低分
-    mmr_lambda: float = float(os.getenv("RAG_MMR_LAMBDA", "0.5"))  # 多样性权衡
+    bm25_weight: float = float(os.getenv("RAG_BM25_WEIGHT", "0.4"))  # 提高 BM25 权重
+    vec_weight: float = float(os.getenv("RAG_VEC_WEIGHT", "0.6"))
+    score_threshold: float = float(os.getenv("RAG_SCORE_THRESHOLD", "0.0"))  # 不过滤低分，增加召回
+    mmr_lambda: float = float(os.getenv("RAG_MMR_LAMBDA", "0.7"))  # 降低多样性，增加相关性
     
     # 严格模式：True=仅基于知识库回答，False=允许模型自由发挥
     strict_mode: bool = os.getenv("RAG_STRICT_MODE", "true").lower() in {"1", "true", "yes"}

@@ -61,13 +61,88 @@
               <span>Top K</span>
               <span class="label-desc">检索返回的文档片段数量</span>
             </label>
-            <input 
-              v-model.number="settings.topK" 
-              type="number" 
-              class="setting-input"
-              min="1"
-              max="20"
-            />
+            <div class="slider-control">
+              <input 
+                v-model.number="settings.topK" 
+                type="range" 
+                class="setting-slider"
+                min="1"
+                max="20"
+              />
+              <span class="slider-value">{{ settings.topK }}</span>
+            </div>
+          </div>
+          
+          <div class="setting-item">
+            <label class="setting-label">
+              <span>相似度阈值</span>
+              <span class="label-desc">过滤低相关度文档（0=不过滤，越高越严格）</span>
+            </label>
+            <div class="slider-control">
+              <input 
+                v-model.number="settings.scoreThreshold" 
+                type="range" 
+                class="setting-slider"
+                min="0"
+                max="1"
+                step="0.05"
+              />
+              <span class="slider-value">{{ settings.scoreThreshold.toFixed(2) }}</span>
+            </div>
+          </div>
+          
+          <div class="setting-item">
+            <label class="setting-label">
+              <span>BM25 权重</span>
+              <span class="label-desc">关键词匹配的权重（提高可改善精确匹配）</span>
+            </label>
+            <div class="slider-control">
+              <input 
+                v-model.number="settings.bm25Weight" 
+                type="range" 
+                class="setting-slider"
+                min="0"
+                max="1"
+                step="0.05"
+              />
+              <span class="slider-value">{{ settings.bm25Weight.toFixed(2) }}</span>
+            </div>
+          </div>
+          
+          <div class="setting-item">
+            <label class="setting-label">
+              <span>向量权重</span>
+              <span class="label-desc">语义相似度的权重</span>
+            </label>
+            <div class="slider-control">
+              <input 
+                v-model.number="settings.vectorWeight" 
+                type="range" 
+                class="setting-slider"
+                min="0"
+                max="1"
+                step="0.05"
+              />
+              <span class="slider-value">{{ settings.vectorWeight.toFixed(2) }}</span>
+            </div>
+          </div>
+          
+          <div class="setting-item">
+            <label class="setting-label">
+              <span>结果多样性</span>
+              <span class="label-desc">MMR 多样性参数（越高结果越多样）</span>
+            </label>
+            <div class="slider-control">
+              <input 
+                v-model.number="settings.mmrLambda" 
+                type="range" 
+                class="setting-slider"
+                min="0"
+                max="1"
+                step="0.05"
+              />
+              <span class="slider-value">{{ settings.mmrLambda.toFixed(2) }}</span>
+            </div>
           </div>
           
           <div class="setting-item">
@@ -83,6 +158,22 @@
                 class="toggle-input"
               />
               <label for="strict-mode" class="toggle-label"></label>
+            </div>
+          </div>
+          
+          <div class="setting-item">
+            <label class="setting-label">
+              <span>启用 BM25</span>
+              <span class="label-desc">混合检索：语义 + 关键词匹配</span>
+            </label>
+            <div class="toggle-switch">
+              <input 
+                id="bm25-enabled"
+                v-model="settings.bm25Enabled" 
+                type="checkbox"
+                class="toggle-input"
+              />
+              <label for="bm25-enabled" class="toggle-label"></label>
             </div>
           </div>
           
@@ -107,13 +198,29 @@
               <span>重排序 Top N</span>
               <span class="label-desc">重排序后保留的片段数量</span>
             </label>
-            <input 
-              v-model.number="settings.rerankTopN" 
-              type="number" 
-              class="setting-input"
-              min="1"
-              max="10"
-            />
+            <div class="slider-control">
+              <input 
+                v-model.number="settings.rerankTopN" 
+                type="range" 
+                class="setting-slider"
+                min="1"
+                :max="settings.topK"
+              />
+              <span class="slider-value">{{ settings.rerankTopN }}</span>
+            </div>
+          </div>
+          
+          <!-- 快速预设 -->
+          <div class="preset-buttons">
+            <button class="preset-btn" @click="applyPreset('balanced')">
+              ⚖️ 平衡模式
+            </button>
+            <button class="preset-btn" @click="applyPreset('recall')">
+              📊 高召回模式
+            </button>
+            <button class="preset-btn" @click="applyPreset('precision')">
+              🎯 高精度模式
+            </button>
           </div>
         </div>
         
@@ -242,10 +349,15 @@ const emit = defineEmits(['close', 'settings-changed']);
 const settings = ref({
   llmModel: 'deepseek-chat',
   embeddingModel: 'sentence-transformers/all-MiniLM-L6-v2',
-  topK: 4,
+  topK: 8,
+  scoreThreshold: 0.0,
+  bm25Weight: 0.4,
+  vectorWeight: 0.6,
+  mmrLambda: 0.7,
   strictMode: true,
+  bm25Enabled: true,
   rerankEnabled: false,
-  rerankTopN: 3,
+  rerankTopN: 5,
   darkMode: false,
   streamDelay: 5,
   autoSave: true
@@ -284,6 +396,37 @@ const cacheMaxSize = ref(256);
 // 选择模型
 function selectModel(modelValue) {
   settings.value.llmModel = modelValue;
+}
+
+// 应用检索预设
+function applyPreset(preset) {
+  switch (preset) {
+    case 'balanced': // 平衡模式：默认推荐
+      settings.value.topK = 8;
+      settings.value.scoreThreshold = 0.0;
+      settings.value.bm25Weight = 0.4;
+      settings.value.vectorWeight = 0.6;
+      settings.value.mmrLambda = 0.7;
+      settings.value.bm25Enabled = true;
+      break;
+    case 'recall': // 高召回模式：宽松检索，增加命中率
+      settings.value.topK = 12;
+      settings.value.scoreThreshold = 0.0;
+      settings.value.bm25Weight = 0.5;
+      settings.value.vectorWeight = 0.5;
+      settings.value.mmrLambda = 0.5;
+      settings.value.bm25Enabled = true;
+      break;
+    case 'precision': // 高精度模式：严格筛选
+      settings.value.topK = 5;
+      settings.value.scoreThreshold = 0.3;
+      settings.value.bm25Weight = 0.3;
+      settings.value.vectorWeight = 0.7;
+      settings.value.mmrLambda = 0.8;
+      settings.value.bm25Enabled = true;
+      break;
+  }
+  alert(`已应用 ${preset === 'balanced' ? '平衡' : preset === 'recall' ? '高召回' : '高精度'} 模式预设`);
 }
 
 // 加载设置
@@ -388,10 +531,15 @@ function resetSettings() {
   settings.value = {
     llmModel: 'deepseek-chat',
     embeddingModel: 'sentence-transformers/all-MiniLM-L6-v2',
-    topK: 4,
+    topK: 8,
+    scoreThreshold: 0.0,
+    bm25Weight: 0.4,
+    vectorWeight: 0.6,
+    mmrLambda: 0.7,
     strictMode: true,
+    bm25Enabled: true,
     rerankEnabled: false,
-    rerankTopN: 3,
+    rerankTopN: 5,
     darkMode: false,
     streamDelay: 5,
     autoSave: true
@@ -601,6 +749,100 @@ onMounted(() => {
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 32px;
+}
+
+/* 滑块控制 */
+.slider-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 220px;
+}
+
+.setting-slider {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: #e5e7eb;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+}
+
+.setting-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+  transition: all 0.2s;
+}
+
+.setting-slider::-webkit-slider-thumb:hover {
+  background: #2563eb;
+  transform: scale(1.1);
+  box-shadow: 0 3px 6px rgba(59, 130, 246, 0.4);
+}
+
+.setting-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+  transition: all 0.2s;
+}
+
+.setting-slider::-moz-range-thumb:hover {
+  background: #2563eb;
+  transform: scale(1.1);
+  box-shadow: 0 3px 6px rgba(59, 130, 246, 0.4);
+}
+
+.slider-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #3b82f6;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* 预设按钮 */
+.preset-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.preset-btn {
+  flex: 1;
+  padding: 10px 16px;
+  background: #f9fafb;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.preset-btn:hover {
+  background: #ffffff;
+  border-color: #3b82f6;
+  color: #3b82f6;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
 }
 
 /* 模型选择卡片 */

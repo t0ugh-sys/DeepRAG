@@ -74,8 +74,22 @@ class VectorStore:
                 raise RuntimeError("需要 FAISS 以读取本地回退索引，请使用 conda 安装 faiss-cpu: conda install -n rag-env -c conda-forge faiss-cpu") from exc
             self.faiss_index = faiss.read_index(faiss_path)
 
+    def _expand_query(self, query: str) -> str:
+        """查询扩展：提取关键词，生成多个查询变体"""
+        try:
+            import jieba.analyse
+            # 提取关键词（TF-IDF）
+            keywords = jieba.analyse.extract_tags(query, topK=5, withWeight=False)
+            # 将关键词组合回原查询
+            expanded = query + " " + " ".join(keywords)
+            return expanded
+        except Exception:
+            return query
+    
     def search(self, query: str, top_k: int = 4) -> List[RetrievedChunk]:
-        vec = self.embedder.encode([query], normalize_embeddings=True)
+        # 查询扩展
+        expanded_query = self._expand_query(query)
+        vec = self.embedder.encode([expanded_query], normalize_embeddings=True)
         vec = np.array(vec).astype("float32")[0]
         results: List[RetrievedChunk] = []
         if self.backend == "milvus" and self.collection is not None:
@@ -107,8 +121,17 @@ class VectorStore:
 
     # --- 辅助：BM25 + MMR 融合 ---
     def _tokenize(self, s: str) -> list[str]:
+        """中文友好的分词：结合 jieba 分词和字符级分词"""
         import re
-        return [w for w in re.split(r"\W+", s.lower()) if w]
+        try:
+            import jieba
+            # 使用 jieba 进行中文分词
+            words = list(jieba.cut_for_search(s.lower()))  # 搜索引擎模式，更细粒度
+            # 过滤掉空白和单字符标点
+            return [w.strip() for w in words if w.strip() and not re.match(r'^[\W_]+$', w)]
+        except ImportError:
+            # 如果没有 jieba，回退到简单分词
+            return [w for w in re.split(r"\W+", s.lower()) if w]
 
     def _fuse_with_bm25(self, query: str, vec_results: List[RetrievedChunk], top_k: int) -> List[RetrievedChunk]:
         settings = Settings()
@@ -327,31 +350,40 @@ def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: boo
     context_blocks = []
     for i, c in enumerate(contexts, start=1):
         path = c.meta.get("path", "")
+        # 提取文件名而非完整路径，更简洁
+        filename = path.split('/')[-1] if '/' in path else path.split('\\')[-1] if '\\' in path else path
         score = f"相关度: {c.score:.2f}"
-        context_blocks.append(f"[片段{i}] 来源: {path} ({score})\n{c.text}")
+        context_blocks.append(f"[文档{i}: {filename}]\n{c.text}")
     context_text = "\n\n".join(context_blocks)
     
     if strict_mode:
         system_instruction = (
-            "你是一个严谨的知识助手。\n"
-            "**重要规则**：\n"
-            "1. 仅使用下列检索到的资料片段来回答问题\n"
-            "2. 严格基于资料作答，不要添加资料中没有的信息\n"
-            "3. 如果资料不足以完整回答问题，明确说明哪些部分资料未覆盖\n"
-            "4. 绝对不要编造、推测或使用资料之外的知识\n"
+            "你是一个专业的知识库检索助手。\n\n"
+            "**核心规则**：\n"
+            "1. 仔细阅读下列所有文档片段，全面理解其内容\n"
+            "2. 从文档中寻找与问题相关的**所有信息**，包括直接和间接相关的内容\n"
+            "3. 综合多个文档片段的信息进行回答\n"
+            "4. 如果文档中确实没有答案，明确告知用户\n"
+            "5. 回答要详细、具体，尽可能引用原文\n\n"
+            "**注意**：即使某个文档片段看起来相关度不高，也要仔细检查是否包含有用信息。"
         )
     else:
         system_instruction = (
-            "你是一个智能助手。\n"
-            "优先使用下列检索到的资料片段来回答问题。\n"
-            "如果资料不足，可以结合你的知识进行补充，但需要明确区分哪些来自资料，哪些是补充信息。\n"
+            "你是一个智能助手。\n\n"
+            "**任务**：\n"
+            "1. 优先使用下列文档片段中的信息\n"
+            "2. 如果文档信息不足，可以结合你的知识进行补充\n"
+            "3. 明确标注哪些来自文档，哪些是你的补充\n"
         )
     
     prompt = (
         f"{system_instruction}\n"
-        f"资料片段：\n{context_text}\n\n"
-        f"问题：{question}\n\n"
-        "请给出简洁、条理清晰的回答。"
+        f"{'='*60}\n"
+        f"检索到的知识库文档（共 {len(contexts)} 个片段）：\n\n"
+        f"{context_text}\n"
+        f"{'='*60}\n\n"
+        f"用户问题：{question}\n\n"
+        "请基于以上文档，给出详细、准确的回答："
     )
     return prompt
 

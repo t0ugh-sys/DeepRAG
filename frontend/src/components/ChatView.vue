@@ -51,6 +51,15 @@
     </div>
     
     <div class="composer">
+      <div class="composer-controls">
+        <div class="model-selector">
+          <select v-model="selectedModel" class="model-dropdown">
+            <option v-for="model in availableModels" :key="model.value" :value="model.value">
+              {{ model.icon }} {{ model.name }}
+            </option>
+          </select>
+        </div>
+      </div>
       <div class="input-wrapper">
         <textarea
           v-model="question" 
@@ -72,7 +81,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue';
+import { ref, nextTick, watch, onMounted } from 'vue';
 import { marked } from 'marked';
 import api from '../api';
 
@@ -84,6 +93,13 @@ const loading = ref(false);
 const streamingContent = ref('');
 const messagesEl = ref(null);
 const textareaEl = ref(null);
+const selectedModel = ref('deepseek-chat');
+const availableModels = ref([
+  { value: 'deepseek-chat', name: 'DeepSeek Chat', icon: '🚀' },
+  { value: 'qwen-turbo', name: 'Qwen Turbo', icon: '⚡' },
+  { value: 'qwen-plus', name: 'Qwen Plus', icon: '✨' },
+  { value: 'qwen-max', name: 'Qwen Max', icon: '🎯' }
+]);
 
 watch(question, () => {
   if (textareaEl.value) {
@@ -130,7 +146,8 @@ async function sendQuestion() {
   
   loading.value = true;
   streamingContent.value = '';
-  const model = localStorage.getItem('model') || undefined;
+  // 使用选中的模型
+  const model = selectedModel.value;
   
   try {
     const res = await api.askStream(q, model, 4);
@@ -191,6 +208,46 @@ async function sendQuestion() {
     scrollToBottom();
   }
 }
+
+// 加载可用模型列表
+async function loadAvailableModels() {
+  try {
+    const res = await api.getModels();
+    if (res.data.ok) {
+      const modelConfigMap = {
+        'deepseek-chat': { name: 'DeepSeek Chat', icon: '🚀' },
+        'qwen-turbo': { name: 'Qwen Turbo', icon: '⚡' },
+        'qwen-plus': { name: 'Qwen Plus', icon: '✨' },
+        'qwen-max': { name: 'Qwen Max', icon: '🎯' }
+      };
+      
+      availableModels.value = res.data.models.map(model => ({
+        value: model,
+        name: modelConfigMap[model]?.name || model,
+        icon: modelConfigMap[model]?.icon || '🔮'
+      }));
+      
+      // 从 localStorage 恢复上次选择的模型
+      const savedModel = localStorage.getItem('selectedModel');
+      if (savedModel && res.data.models.includes(savedModel)) {
+        selectedModel.value = savedModel;
+      } else {
+        selectedModel.value = res.data.default_model || res.data.models[0];
+      }
+    }
+  } catch (e) {
+    console.error('加载模型列表失败:', e);
+  }
+}
+
+// 监听模型选择变化，保存到 localStorage
+watch(selectedModel, (newModel) => {
+  localStorage.setItem('selectedModel', newModel);
+});
+
+onMounted(() => {
+  loadAvailableModels();
+});
 </script>
 
 <style scoped>
@@ -361,7 +418,46 @@ async function sendQuestion() {
   padding: 16px 24px 24px;
   background: #ffffff;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.composer-controls {
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  justify-content: flex-start;
+  padding: 0 4px;
+}
+
+.model-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-dropdown {
+  padding: 6px 12px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.model-dropdown:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+}
+
+.model-dropdown:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .input-wrapper {

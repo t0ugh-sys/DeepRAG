@@ -405,17 +405,35 @@ def list_doc_paths(limit: int = 1000, namespace: str | None = None) -> JSONRespo
 def export_by_path(path: str, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
-    # 简易导出：按 path 直接查询文本与 chunk_id
+    
     try:
         ns = namespace or settings.default_namespace
         local = RAGPipeline(settings, ns)
-        coll = local.store.collection  # type: ignore[attr-defined]
-        escaped = path.replace("'", "\\'")
-        expr = "path == '" + escaped + "'"
-        recs = coll.query(expr=expr, output_fields=["path", "chunk_id", "text"], limit=10000)
+        store = local.store
+        backend = getattr(store, "backend", "faiss")
+        
+        chunks = []
+        
+        if backend == "milvus" and store.collection is not None:
+            # Milvus 后端
+            escaped = path.replace("'", "\\'")
+            expr = "path == '" + escaped + "'"
+            recs = store.collection.query(expr=expr, output_fields=["path", "chunk_id", "text"], limit=10000)
+            chunks = recs
+        else:
+            # FAISS 后端：从内存中过滤
+            for i, meta in enumerate(store.metas):
+                if meta.get("path") == path:
+                    chunks.append({
+                        "path": path,
+                        "chunk_id": meta.get("chunk_id", i),
+                        "text": store.texts[i] if i < len(store.texts) else ""
+                    })
+        
+        return JSONResponse({"ok": True, "path": path, "chunks": chunks})
     except Exception as e:
+        logger.error(f"导出文档失败: {e}")
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
-    return JSONResponse({"ok": True, "path": path, "chunks": recs})
 
 
 @app.post("/import")
