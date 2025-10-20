@@ -166,7 +166,7 @@ async function loadDocuments() {
       // 然后为每个路径获取分片数量
       const docs = await Promise.all(paths.map(async (path) => {
         try {
-          const exportRes = await api.exportByPath(path);
+          const exportRes = await api.exportPath(path);
           const chunks = exportRes.data.chunks || [];
           return {
             path: path,
@@ -195,7 +195,7 @@ async function previewDocument(doc) {
   previewChunks.value = [];
   
   try {
-    const res = await api.exportByPath(doc.path);
+    const res = await api.exportPath(doc.path);
     if (res.data.ok) {
       previewChunks.value = res.data.chunks || [];
     }

@@ -188,6 +188,17 @@ def ask(req: AskRequest, x_api_key: str | None = None, namespace: str | None = N
     return AskResponse(answer=answer, sources=sources)
 
 
+@app.get("/models")
+def get_available_models() -> JSONResponse:  # type: ignore[override]
+    """获取可用的 LLM 模型列表"""
+    models = settings.available_models.split(",")
+    return JSONResponse({
+        "ok": True,
+        "models": [m.strip() for m in models if m.strip()],
+        "default_model": settings.llm_model
+    })
+
+
 @app.get("/healthz")
 def healthz() -> JSONResponse:  # type: ignore[override]
     """健康检查与监控指标"""

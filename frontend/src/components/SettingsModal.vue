@@ -16,12 +16,14 @@
               <span>LLM 模型</span>
               <span class="label-desc">用于生成回答的大语言模型</span>
             </label>
-            <input 
+            <select 
               v-model="settings.llmModel" 
-              type="text" 
-              class="setting-input"
-              placeholder="例如: gpt-4, gpt-3.5-turbo"
-            />
+              class="setting-select"
+            >
+              <option v-for="model in availableModels" :key="model" :value="model">
+                {{ model }}
+              </option>
+            </select>
           </div>
           
           <div class="setting-item">
@@ -226,17 +228,18 @@ import api from '../api';
 const emit = defineEmits(['close', 'settings-changed']);
 
 const settings = ref({
-  llmModel: 'gpt-4o-mini',
-  embeddingModel: 'BAAI/bge-large-zh-v1.5',
+  llmModel: 'deepseek-chat',
+  embeddingModel: 'sentence-transformers/all-MiniLM-L6-v2',
   topK: 4,
   strictMode: true,
-  rerankEnabled: true,
+  rerankEnabled: false,
   rerankTopN: 3,
   darkMode: false,
   streamDelay: 5,
   autoSave: true
 });
 
+const availableModels = ref(['deepseek-chat', 'qwen-turbo', 'qwen-plus', 'qwen-max']);
 const cacheSize = ref(0);
 const cacheMaxSize = ref(256);
 
@@ -340,11 +343,11 @@ function resetSettings() {
   if (!confirm('确认恢复所有默认设置？')) return;
   
   settings.value = {
-    llmModel: 'gpt-4o-mini',
-    embeddingModel: 'BAAI/bge-large-zh-v1.5',
+    llmModel: 'deepseek-chat',
+    embeddingModel: 'sentence-transformers/all-MiniLM-L6-v2',
     topK: 4,
     strictMode: true,
-    rerankEnabled: true,
+    rerankEnabled: false,
     rerankTopN: 3,
     darkMode: false,
     streamDelay: 5,
@@ -354,9 +357,26 @@ function resetSettings() {
   alert('已恢复默认设置');
 }
 
+// 加载可用模型列表
+async function loadAvailableModels() {
+  try {
+    const res = await api.getModels();
+    if (res.data.ok) {
+      availableModels.value = res.data.models;
+      // 如果当前模型不在列表中，设置为默认模型
+      if (!availableModels.value.includes(settings.value.llmModel)) {
+        settings.value.llmModel = res.data.default_model || availableModels.value[0];
+      }
+    }
+  } catch (e) {
+    console.error('加载模型列表失败:', e);
+  }
+}
+
 onMounted(() => {
   loadSettings();
   loadCacheStats();
+  loadAvailableModels();
 });
 </script>
 
@@ -493,19 +513,31 @@ onMounted(() => {
   color: #6b7280;
 }
 
-.setting-input {
+.setting-input,
+.setting-select {
   width: 200px;
   padding: 8px 12px;
   border: 1.5px solid #e5e7eb;
   border-radius: 8px;
   font-size: 14px;
   transition: all 0.2s;
+  background: #ffffff;
 }
 
-.setting-input:focus {
+.setting-input:focus,
+.setting-select:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.setting-select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 32px;
 }
 
 .toggle-switch {

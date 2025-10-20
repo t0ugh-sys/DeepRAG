@@ -46,6 +46,13 @@ class Settings:
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
     openai_base_url: str | None = os.getenv("OPENAI_BASE_URL")
     llm_model: str = os.getenv("RAG_MODEL", "deepseek-chat")
+    
+    # Qwen API 配置
+    qwen_api_key: str | None = os.getenv("QWEN_API_KEY")
+    qwen_base_url: str | None = os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    
+    # 可用模型列表
+    available_models: str = os.getenv("AVAILABLE_MODELS", "deepseek-chat,qwen-turbo,qwen-plus,qwen-max")
 
     # 检索参数
     top_k: int = int(os.getenv("RAG_TOP_K", "4"))

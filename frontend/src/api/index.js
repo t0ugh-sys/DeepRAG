@@ -20,6 +20,9 @@ export default {
   // 健康检查
   healthz: () => api.get('/healthz'),
   
+  // 获取可用模型列表
+  getModels: () => api.get('/models'),
+  
   // 提问（流式）
   askStream: (question, model, top_k = 4) => 
     fetch(`${BASE_URL}/ask_stream?namespace=${localStorage.getItem('ns') || ''}`, {

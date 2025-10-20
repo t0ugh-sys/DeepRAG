@@ -362,18 +362,37 @@ class RAGPipeline:
         meta_path = os.path.join(settings.index_dir, "meta.jsonl")
         self.store = VectorStore(meta_path, settings.embedding_model_name, settings, namespace)
 
+        # 默认使用 DeepSeek (OpenAI) 配置
         client_kwargs: Dict[str, Any] = {}
         if settings.openai_api_key:
             client_kwargs["api_key"] = settings.openai_api_key
         if settings.openai_base_url:
             client_kwargs["base_url"] = settings.openai_base_url
         self.client = OpenAI(**client_kwargs)
+        
+        # 为 Qwen 创建单独的客户端
+        self.qwen_client = None
+        if settings.qwen_api_key:
+            qwen_kwargs: Dict[str, Any] = {
+                "api_key": settings.qwen_api_key,
+                "base_url": settings.qwen_base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            }
+            self.qwen_client = OpenAI(**qwen_kwargs)
+        
         self.reranker = None
         if settings.reranker_enabled and FlagReranker is not None:
             try:
                 self.reranker = FlagReranker(settings.reranker_model_name, use_fp16=True)
             except Exception:
                 self.reranker = None
+    
+    def _get_client_for_model(self, model: str) -> OpenAI:
+        """根据模型名称选择对应的客户端"""
+        if model and model.startswith("qwen"):
+            if self.qwen_client is None:
+                raise ValueError(f"Qwen 模型 '{model}' 需要配置 QWEN_API_KEY")
+            return self.qwen_client
+        return self.client
 
     def ask(self, question: str, top_k: int | None = None, rerank_enabled: bool | None = None, rerank_top_n: int | None = None, model: str | None = None) -> Tuple[str, List[RetrievedChunk]]:
         k = top_k or self.settings.top_k
@@ -397,8 +416,10 @@ class RAGPipeline:
                 r.score = float(s)
             recs = sorted(recs, key=lambda x: x.score, reverse=True)[: top_n]
         prompt = build_prompt(question, recs, strict_mode=self.settings.strict_mode)
-        resp = self.client.chat.completions.create(
-            model=(model or self.settings.llm_model),
+        target_model = model or self.settings.llm_model
+        client = self._get_client_for_model(target_model)
+        resp = client.chat.completions.create(
+            model=target_model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
         )
@@ -418,10 +439,12 @@ class RAGPipeline:
                 r.score = float(s)
             recs = sorted(recs, key=lambda x: x.score, reverse=True)[: top_n]
         prompt = build_prompt(question, recs, strict_mode=self.settings.strict_mode)
+        target_model = model or self.settings.llm_model
+        client = self._get_client_for_model(target_model)
 
         def _gen():  # noqa: ANN202
-            stream = self.client.chat.completions.create(
-                model=(model or self.settings.llm_model),
+            stream = client.chat.completions.create(
+                model=target_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
                 stream=True,

@@ -56,7 +56,7 @@ def load_documents(docs_dir: str) -> List[Dict[str, Any]]:
     return documents
 
 
-def split_text(text: str, chunk_size: int = 800, chunk_overlap: int = 120) -> List[str]:
+def split_text(text: str, chunk_size: int = 400, chunk_overlap: int = 80) -> List[str]:
     # Markdown 优化：按标题、列表、代码块分段，尽量保持语义边界
     lines = text.splitlines()
     blocks: List[str] = []
@@ -203,8 +203,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="构建本地 RAG 索引")
     parser.add_argument("--docs_dir", type=str, default=Settings().docs_dir)
     parser.add_argument("--index_dir", type=str, default=Settings().index_dir)
-    parser.add_argument("--chunk_size", type=int, default=800)
-    parser.add_argument("--chunk_overlap", type=int, default=120)
+    parser.add_argument("--chunk_size", type=int, default=400)
+    parser.add_argument("--chunk_overlap", type=int, default=80)
     args = parser.parse_args()
 
     settings = Settings()
