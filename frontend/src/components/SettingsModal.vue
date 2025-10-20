@@ -435,7 +435,16 @@ function loadSettings() {
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
+      // 先合并设置
       settings.value = { ...settings.value, ...parsed };
+      
+      // 验证 llmModel 是否在可用列表中
+      if (availableModels.value.length > 0 && !availableModels.value.includes(settings.value.llmModel)) {
+        console.warn(`Invalid model '${settings.value.llmModel}' in localStorage, resetting to default`);
+        settings.value.llmModel = availableModels.value[0] || 'deepseek-chat';
+        // 只保存到 localStorage，不触发 emit
+        localStorage.setItem('app-settings', JSON.stringify(settings.value));
+      }
     } catch (e) {
       console.error('加载设置失败:', e);
     }

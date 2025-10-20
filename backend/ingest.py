@@ -58,16 +58,21 @@ def load_documents(docs_dir: str) -> List[Dict[str, Any]]:
 
 def split_text(text: str, chunk_size: int = 400, chunk_overlap: int = 80) -> List[str]:
     # Markdown 优化：按标题、列表、代码块分段，尽量保持语义边界
+    # 关键改进：确保标题和内容在同一块中
     lines = text.splitlines()
     blocks: List[str] = []
     buf: List[str] = []
     in_code = False
     fence = None
+    min_chunk_lines = 3  # 最小保留行数，避免只有标题的块
 
     def flush():
-        if buf:
+        if buf and len(buf) >= min_chunk_lines:
             blocks.append("\n".join(buf).strip())
             buf.clear()
+        elif buf:
+            # 如果内容太少（比如只有标题），保留在 buf 中继续累积
+            pass
 
     for raw in lines:
         line = raw.rstrip("\n\r")
@@ -88,18 +93,24 @@ def split_text(text: str, chunk_size: int = 400, chunk_overlap: int = 80) -> Lis
         if in_code:
             buf.append(line)
             continue
-        # 标题或分隔线作为段落边界
-        if line.startswith(('#', '##', '###')) or line.strip() in {'---', '***'}:
-            flush()
-            buf.append(line)
+        # 标题：作为新段落的开始
+        if line.startswith(('#', '##', '###')):
+            flush()  # 先清空之前的内容（如果足够长）
+            buf.append(line)  # 标题作为新段落的开始
+            continue
+        # 分隔线作为段落边界
+        if line.strip() in {'---', '***'}:
             flush()
             continue
-        # 列表/段落
+        # 空行：只在累积内容足够多时才 flush
         if not line.strip():
-            flush()
+            if len(buf) > min_chunk_lines:
+                flush()
             continue
         buf.append(line)
-    flush()
+    # 最后清空剩余内容（忽略最小行数限制）
+    if buf:
+        blocks.append("\n".join(buf).strip())
 
     # 长块二次切分
     chunks: List[str] = []
