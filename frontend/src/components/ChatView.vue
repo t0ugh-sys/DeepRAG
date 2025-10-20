@@ -328,6 +328,11 @@ onMounted(() => {
 
 .message.user {
   flex-direction: row-reverse;
+  justify-content: flex-start; /* 用户消息靠右 */
+}
+
+.message.assistant {
+  justify-content: flex-start; /* 助手消息靠左 */
 }
 
 .avatar {
@@ -352,6 +357,13 @@ onMounted(() => {
 .msg-content {
   flex: 1;
   min-width: 0;
+  max-width: 70%; /* 限制消息宽度，不要占满整行 */
+}
+
+.message.user .msg-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end; /* 用户消息内容右对齐 */
 }
 
 .msg-header {
@@ -413,7 +425,12 @@ onMounted(() => {
 }
 
 .message.user .msg-text {
-  color: #111827;
+  background: #f0f9ff; /* 浅蓝色背景 */
+  color: #1e40af;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid #bfdbfe;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .composer {
