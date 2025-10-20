@@ -710,20 +710,33 @@ function loadSettings() {
 
 // 保存设置
 function saveSettings() {
+  console.log('Saving settings:', settings.value);
   localStorage.setItem('app-settings', JSON.stringify(settings.value));
+  
+  // 同时保存主题设置
+  const theme = settings.value.darkMode ? 'dark' : 'light';
+  localStorage.setItem('theme', theme);
+  document.documentElement.setAttribute('data-theme', theme);
+  
   emit('settings-changed', settings.value);
   emit('close');
+  
+  // 显示保存成功提示
+  console.log('Settings saved successfully!');
 }
 
 // 主题切换（通过 watch 自动触发）
 function toggleTheme() {
   const theme = settings.value.darkMode ? 'dark' : 'light';
+  console.log('Toggling theme to:', theme);
   localStorage.setItem('theme', theme);
   document.documentElement.setAttribute('data-theme', theme);
+  console.log('Theme applied to DOM, current attribute:', document.documentElement.getAttribute('data-theme'));
 }
 
 // 监听主题变化
 watch(() => settings.value.darkMode, (newValue) => {
+  console.log('Dark mode changed to:', newValue);
   toggleTheme();
 });
 

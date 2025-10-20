@@ -215,7 +215,7 @@ onMounted(() => {
   display: flex;
   width: 100%;
   height: 100vh;
-  background: #f7f8fa;
+  background: var(--bg-secondary);
   overflow: hidden;
 }
 
@@ -225,5 +225,6 @@ onMounted(() => {
   flex-direction: column;
   width: 100%;
   overflow: hidden;
+  background: var(--bg-secondary);
 }
 </style>
