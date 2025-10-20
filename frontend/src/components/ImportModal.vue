@@ -193,7 +193,7 @@ async function uploadFiles() {
 }
 
 .modal-content {
-  background: #ffffff;
+  background: var(--bg-primary);
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   max-width: 600px;
@@ -220,13 +220,13 @@ async function uploadFiles() {
   align-items: center;
   justify-content: space-between;
   padding: 24px 24px 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .modal-header h2 {
   font-size: 20px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -236,7 +236,7 @@ async function uploadFiles() {
   border-radius: 8px;
   border: none;
   background: transparent;
-  color: #9ca3af;
+  color: var(--text-secondary);
   font-size: 24px;
   cursor: pointer;
   display: flex;
@@ -246,8 +246,8 @@ async function uploadFiles() {
 }
 
 .close-btn:hover {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .modal-body {
@@ -263,12 +263,12 @@ async function uploadFiles() {
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
-  background: #fafafa;
+  background: var(--bg-secondary);
 }
 
 .upload-area:hover, .upload-area.dragging {
-  border-color: #3b82f6;
-  background: #eff6ff;
+  border-color: var(--accent-primary);
+  background: var(--bg-primary);
 }
 
 .upload-prompt {
@@ -286,13 +286,13 @@ async function uploadFiles() {
 .upload-title {
   font-size: 16px;
   font-weight: 500;
-  color: #374151;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .upload-hint {
   font-size: 14px;
-  color: #9ca3af;
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -307,13 +307,13 @@ async function uploadFiles() {
   margin-bottom: 12px;
   font-size: 14px;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .text-btn {
   background: none;
   border: none;
-  color: #3b82f6;
+  color: var(--accent-primary);
   font-size: 13px;
   cursor: pointer;
   padding: 4px 8px;
@@ -328,16 +328,16 @@ async function uploadFiles() {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
   border-radius: 8px;
   margin-bottom: 8px;
   transition: all 0.15s;
 }
 
 .file-item:hover {
-  background: #f3f4f6;
-  border-color: #d1d5db;
+  background: var(--bg-primary);
+  border-color: var(--border-secondary);
 }
 
 .file-icon {
@@ -348,7 +348,7 @@ async function uploadFiles() {
 .file-name {
   flex: 1;
   font-size: 14px;
-  color: #374151;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -356,7 +356,7 @@ async function uploadFiles() {
 
 .file-size {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-tertiary);
   flex-shrink: 0;
 }
 
@@ -366,7 +366,7 @@ async function uploadFiles() {
   border-radius: 4px;
   border: none;
   background: transparent;
-  color: #dc2626;
+  color: var(--danger);
   font-size: 16px;
   cursor: pointer;
   display: flex;
@@ -377,7 +377,7 @@ async function uploadFiles() {
 }
 
 .remove-btn:hover {
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.15);
 }
 
 .message {
@@ -386,15 +386,14 @@ async function uploadFiles() {
   border-radius: 8px;
   font-size: 14px;
   line-height: 1.6;
-  background: #dbeafe;
-  color: #1e40af;
-  border: 1px solid #93c5fd;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
 }
 
 .message.error {
-  background: #fee2e2;
-  color: #dc2626;
-  border-color: #fca5a5;
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .modal-footer {
@@ -403,7 +402,7 @@ async function uploadFiles() {
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 24px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--border-primary);
 }
 
 .btn {
@@ -423,11 +422,11 @@ async function uploadFiles() {
 
 .btn-secondary {
   background: #f3f4f6;
-  color: #374151;
+  color: var(--text-primary);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #e5e7eb;
+  background: var(--bg-primary);
 }
 
 .btn-primary {
@@ -436,7 +435,7 @@ async function uploadFiles() {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--accent-hover);
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 </style>

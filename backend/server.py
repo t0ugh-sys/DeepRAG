@@ -63,6 +63,8 @@ class AskRequest(BaseModel):
     rerank_top_n: int | None = None
     model: str | None = None
     system_prompt: str | None = None
+    web_enabled: bool | None = None
+    web_top_k: int | None = None
 
 
 class SourceItem(BaseModel):
@@ -283,7 +285,9 @@ def ask_stream(req: AskRequest, x_api_key: str | None = None, namespace: str | N
         req.rerank_enabled, 
         req.rerank_top_n, 
         req.model,
-        system_prompt=req.system_prompt
+        system_prompt=req.system_prompt,
+        web_enabled=req.web_enabled,
+        web_top_k=req.web_top_k
     )
 
     def sse():  # noqa: ANN202

@@ -24,7 +24,7 @@
         </div>
         <div class="msg-content">
           <div class="msg-header">
-            <span class="msg-role">{{ msg.role === 'user' ? '你' : 'DeepLearning' }}</span>
+            <span class="msg-role">{{ msg.role === 'user' ? '你' : getModelNameByValue(msg.model) }}</span>
             <span class="msg-time">{{ formatTime(msg.ts) }}</span>
           </div>
           <div class="msg-text" v-html="renderMsg(msg)"></div>
@@ -40,7 +40,7 @@
         </div>
         <div class="msg-content">
           <div class="msg-header">
-            <span class="msg-role">DeepLearning</span>
+            <span class="msg-role">{{ getCurrentModel().name }}</span>
             <span class="typing-indicator">
               <span></span><span></span><span></span>
             </span>
@@ -91,11 +91,15 @@
           rows="1"
           ref="textareaEl"
         />
-        <button class="send-btn" @click="sendQuestion" :disabled="loading || !question.trim()">
-          <svg v-if="!loading" width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <button v-if="!loading" class="send-btn" @click="sendQuestion" :disabled="!question.trim()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
             <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <div v-else class="loading-spinner"></div>
+        </button>
+        <button v-else class="send-btn danger" @click="stopGeneration" title="停止输出">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <rect x="6" y="6" width="12" height="12" rx="2" stroke="currentColor" stroke-width="2"/>
+          </svg>
         </button>
       </div>
     </div>
@@ -116,6 +120,7 @@ const streamingContent = ref('');
 const messagesEl = ref(null);
 const textareaEl = ref(null);
 const selectedModel = ref('deepseek-chat');
+let currentAbortController = null;
 const showModelDropdown = ref(false);
 const availableModels = ref([
   { value: 'deepseek-chat', name: 'DeepSeek', icon: '🚀', desc: '高性价比推理' },
@@ -157,6 +162,11 @@ function renderMsg(msg) {
 
 function getCurrentModel() {
   return availableModels.value.find(m => m.value === selectedModel.value) || availableModels.value[0];
+}
+
+function getModelNameByValue(value) {
+  const m = availableModels.value.find(m => m.value === value);
+  return m ? m.name : 'Assistant';
 }
 
 function toggleModelDropdown() {
@@ -213,7 +223,12 @@ async function sendQuestion() {
   const systemPrompt = settings.systemPrompt;
   
   try {
-    const res = await api.askStream(q, model, 4, systemPrompt);
+    // 若上一次流还未结束，先中止
+    if (currentAbortController) {
+      currentAbortController.abort();
+    }
+    currentAbortController = new AbortController();
+    const res = await api.askStream(q, model, 4, systemPrompt, currentAbortController.signal);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let answer = '';
@@ -260,15 +275,26 @@ async function sendQuestion() {
       }
     }
     
-    emit('new-message', { role: 'assistant', content: answer, ts: Date.now() });
+    emit('new-message', { role: 'assistant', model, content: answer, ts: Date.now() });
   } catch (e) {
     console.error(e);
-    emit('new-message', { role: 'assistant', content: '请求失败: ' + e.message, ts: Date.now() });
+    if (e.name === 'AbortError') {
+      // 用户主动停止，无消息追加
+    } else {
+      emit('new-message', { role: 'assistant', model, content: '请求失败: ' + e.message, ts: Date.now() });
+    }
   } finally {
     loading.value = false;
     streamingContent.value = '';
+    currentAbortController = null;
     await nextTick();
     scrollToBottom();
+  }
+}
+
+function stopGeneration() {
+  if (currentAbortController) {
+    currentAbortController.abort();
   }
 }
 
@@ -327,7 +353,7 @@ onMounted(() => {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 24px;
-  background: #ffffff;
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -348,12 +374,12 @@ onMounted(() => {
 }
 
 .messages::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--border-secondary);
   border-radius: 3px;
 }
 
 .messages::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--text-tertiary);
 }
 
 .empty-state {
@@ -362,7 +388,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #9ca3af;
+  color: var(--text-tertiary);
   gap: 16px;
   padding: 40px;
 }
@@ -370,7 +396,7 @@ onMounted(() => {
 .empty-state h3 {
   font-size: 20px;
   font-weight: 600;
-  color: #374151;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -402,18 +428,18 @@ onMounted(() => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #f3f4f6;
+  background: var(--bg-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6b7280;
+  color: var(--text-secondary);
   flex-shrink: 0;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-primary);
 }
 
 .message.assistant .avatar {
-  background: #111827;
-  color: #ffffff;
+  background: var(--text-primary);
+  color: var(--bg-primary);
   border: none;
 }
 
@@ -439,12 +465,12 @@ onMounted(() => {
 .msg-role {
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--text-primary);
 }
 
 .msg-time {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-tertiary);
 }
 
 .typing-indicator {
@@ -487,8 +513,33 @@ onMounted(() => {
   word-wrap: break-word;
 }
 
+/* 确保 Markdown 渲染内容在深色模式下可见 */
+.msg-text :where(p, ul, ol, li, h1, h2, h3, h4, h5, h6, strong, em, span) {
+  color: var(--text-primary) !important;
+}
+.msg-text a { color: var(--accent-primary); }
+.msg-text code { 
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  padding: 0 4px;
+  border-radius: 4px;
+}
+.msg-text pre { 
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  padding: 12px;
+  border-radius: 8px;
+  overflow: auto;
+}
+.msg-text blockquote {
+  border-left: 3px solid var(--border-secondary);
+  padding-left: 10px;
+  color: var(--text-secondary);
+}
+
 .message.user .msg-text {
-  background: #f0f9ff; /* 浅蓝色背景 */
+  background: var(--bg-secondary);
   color: var(--text-primary);
   padding: 12px 16px;
   border-radius: 12px;
@@ -521,7 +572,7 @@ onMounted(() => {
   gap: 8px;
 }
 
-.model-dropdown {
+.model-dropdown-legacy {
   padding: 6px 12px;
   background: #f3f4f6;
   border: 1px solid #e5e7eb;
@@ -534,12 +585,12 @@ onMounted(() => {
   outline: none;
 }
 
-.model-dropdown:hover {
+.model-dropdown-legacy:hover {
   background: #e5e7eb;
   border-color: #d1d5db;
 }
 
-.model-dropdown:focus {
+.model-dropdown-legacy:focus {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
@@ -550,16 +601,16 @@ onMounted(() => {
   gap: 12px;
   width: 100%;
   max-width: 900px;
-  background: #f7f8fa;
-  border: 1.5px solid #e5e7eb;
+  background: var(--bg-primary);
+  border: 1.5px solid var(--border-primary);
   border-radius: 12px;
   padding: 12px 16px;
   transition: all 0.2s;
 }
 
 .input-wrapper:focus-within {
-  border-color: #111827;
-  background: #ffffff;
+  border-color: var(--text-primary);
+  background: var(--bg-primary);
   box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.05);
 }
 
@@ -573,26 +624,26 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border: 1.5px solid #e2e8f0;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1.5px solid var(--border-primary);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
-  color: #334155;
+  color: var(--text-primary);
   white-space: nowrap;
 }
 
 .model-selector-btn:hover {
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  background: var(--bg-tertiary);
   border-color: var(--border-secondary);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .model-icon {
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
 }
 
@@ -613,11 +664,11 @@ onMounted(() => {
 /* 下拉菜单 */
 .model-dropdown {
   position: absolute;
-  top: calc(100% + 8px);
+  bottom: calc(100% + 8px); /* 向上展开 */
   left: 0;
-  min-width: 240px;
-  background: white;
-  border: 2px solid #e5e7eb;
+  min-width: 200px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
   border-radius: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
   z-index: 1000;
@@ -638,7 +689,7 @@ onMounted(() => {
 
 .dropdown-header {
   padding: 12px 16px;
-  background: linear-gradient(to right, #f8fafc, #f1f5f9);
+  background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
   font-size: 12px;
   font-weight: 600;
@@ -654,7 +705,7 @@ onMounted(() => {
   padding: 12px 16px;
   cursor: pointer;
   transition: all 0.15s;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .model-option:last-child {
@@ -662,12 +713,12 @@ onMounted(() => {
 }
 
 .model-option:hover {
-  background: #f8fafc;
+  background: var(--bg-secondary);
 }
 
 .model-option.active {
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border-left: 3px solid #3b82f6;
+  background: var(--bg-tertiary);
+  border-left: 3px solid var(--accent-primary);
 }
 
 .option-icon {
@@ -700,7 +751,7 @@ onMounted(() => {
 }
 
 .check-icon {
-  color: #3b82f6;
+  color: var(--accent-primary);
   flex-shrink: 0;
 }
 
@@ -708,7 +759,7 @@ textarea {
   flex: 1;
   border: none;
   background: transparent;
-  color: #111827;
+  color: var(--text-primary);
   font-size: 15px;
   font-family: inherit;
   resize: none;
@@ -719,7 +770,7 @@ textarea {
 }
 
 textarea::placeholder {
-  color: #9ca3af;
+  color: var(--text-tertiary);
 }
 
 textarea::-webkit-scrollbar {
@@ -756,6 +807,10 @@ textarea::-webkit-scrollbar-thumb {
   color: #9ca3af;
   cursor: not-allowed;
   transform: none;
+}
+
+.send-btn.danger {
+  background: var(--danger);
 }
 
 .loading-spinner {

@@ -390,9 +390,21 @@ def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: boo
         context_blocks.append(f"[文档{i}: {filename}]\n{c.text}")
     context_text = "\n\n".join(context_blocks)
     
-    # 如果有自定义提示词，使用它并替换占位符
+    # 如果有自定义提示词，使用它并替换占位符；若缺少占位符则自动补全
     if custom_system_prompt:
-        prompt = custom_system_prompt.replace("{context}", context_text).replace("{question}", question)
+        tpl = custom_system_prompt
+        includes_context = "{context}" in tpl
+        includes_question = "{question}" in tpl
+        prompt = tpl.replace("{context}", context_text).replace("{question}", question)
+
+        # 兜底：确保问题与上下文一定出现在最终提示中
+        if not includes_question or not includes_context:
+            prompt = (
+                f"{prompt}\n\n"
+                f"{'='*60}\n"
+                f"用户问题：{question}\n\n"
+                f"检索到的知识库文档（共 {len(contexts)} 个片段）：\n\n{context_text}\n"
+            )
         return prompt
     
     # 否则使用默认提示词
@@ -504,10 +516,28 @@ class RAGPipeline:
         answer = resp.choices[0].message.content or ""
         return answer, recs
 
-    def ask_stream(self, question: str, top_k: int | None = None, rerank_enabled: bool | None = None, rerank_top_n: int | None = None, model: str | None = None, system_prompt: str | None = None):  # noqa: ANN001
+    def ask_stream(self, question: str, top_k: int | None = None, rerank_enabled: bool | None = None, rerank_top_n: int | None = None, model: str | None = None, system_prompt: str | None = None, web_enabled: bool | None = None, web_top_k: int | None = None):  # noqa: ANN001
         """返回(生成器, 检索片段)。生成器逐块产出模型文本。"""
         k = top_k or self.settings.top_k
         recs = self.store.search(question, k)
+
+        # 可选：联网搜索补充实时信息（简单实现：调用 DuckDuckGo html API）
+        web_snippets: list[str] = []
+        if web_enabled:
+            try:
+                import requests
+                import re
+                n = web_top_k or 3
+                q = requests.utils.quote(question)
+                url = f"https://duckduckgo.com/html/?q={q}"
+                html = requests.get(url, timeout=5).text
+                # 极简抓取搜索结果摘要
+                results = re.findall(r'<a rel="nofollow" class="result__a" href="(.*?)".*?</a>.*?<a.*?class="result__snippet".*?>(.*?)</a>', html, flags=re.S)
+                for link, snippet in results[:n]:
+                    text = re.sub('<.*?>', '', snippet)
+                    web_snippets.append(f"[Web] {text}\nURL: {link}")
+            except Exception:
+                pass
         use_rr = (self.reranker is not None) and (self.settings.reranker_enabled if rerank_enabled is None else rerank_enabled)
         top_n = rerank_top_n or self.settings.reranker_top_n
         if use_rr:
@@ -516,6 +546,17 @@ class RAGPipeline:
             for r, s in zip(recs, scores):
                 r.score = float(s)
             recs = sorted(recs, key=lambda x: x.score, reverse=True)[: top_n]
+        # 将 web 片段拼接到上下文尾部
+        if web_snippets:
+            from dataclasses import dataclass
+            @dataclass
+            class _Tmp:
+                text: str
+                score: float
+                meta: dict
+            for w in web_snippets:
+                recs.append(_Tmp(text=w, score=1.0, meta={"path": "web"}))
+
         prompt = build_prompt(question, recs, strict_mode=self.settings.strict_mode, custom_system_prompt=system_prompt)
         target_model = model or self.settings.llm_model
         client = self._get_client_for_model(target_model)

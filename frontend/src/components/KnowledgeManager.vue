@@ -243,7 +243,7 @@ onMounted(() => {
 }
 
 .modal-content {
-  background: #ffffff;
+  background: var(--bg-primary);
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   max-width: 800px;
@@ -268,17 +268,17 @@ onMounted(() => {
 
 .modal-header {
   padding: 20px 24px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border-primary);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: linear-gradient(to right, #f9fafb, #ffffff);
+  background: var(--bg-secondary);
 }
 
 .modal-header h3 {
   font-size: 18px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -286,7 +286,7 @@ onMounted(() => {
   background: transparent;
   border: none;
   font-size: 24px;
-  color: #6b7280;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: color 0.2s;
   padding: 0;
@@ -299,8 +299,8 @@ onMounted(() => {
 }
 
 .close-btn:hover {
-  color: #111827;
-  background: #f3f4f6;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
 }
 
 .modal-body {
@@ -318,41 +318,43 @@ onMounted(() => {
 .search-input {
   flex: 1;
   padding: 10px 14px;
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--border-primary);
   border-radius: 8px;
   font-size: 14px;
   transition: all 0.2s;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .search-input:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--accent-primary);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .btn-refresh {
   padding: 10px;
-  background: #f3f4f6;
-  border: 1.5px solid #e5e7eb;
+  background: var(--bg-secondary);
+  border: 1.5px solid var(--border-primary);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .btn-refresh:hover {
-  background: #e5e7eb;
-  color: #111827;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .stats-bar {
   display: flex;
   gap: 16px;
   padding: 12px 16px;
-  background: #f9fafb;
+  background: var(--bg-secondary);
   border-radius: 8px;
   margin-bottom: 16px;
 }
@@ -365,20 +367,20 @@ onMounted(() => {
 
 .stat-label {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
 .stat-value {
   font-size: 20px;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .loading {
   text-align: center;
   padding: 40px;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
@@ -388,7 +390,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  color: #9ca3af;
+  color: var(--text-tertiary);
 }
 
 .empty-state svg {
@@ -412,22 +414,22 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  background: #ffffff;
-  border: 1.5px solid #e5e7eb;
+  background: var(--bg-primary);
+  border: 1.5px solid var(--border-primary);
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .doc-item:hover {
-  border-color: #3b82f6;
-  background: #f9fafb;
+  border-color: var(--accent-primary);
+  background: var(--bg-secondary);
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
 }
 
 .doc-item.selected {
-  border-color: #3b82f6;
-  background: #eff6ff;
+  border-color: var(--accent-primary);
+  background: var(--bg-secondary);
 }
 
 .doc-icon {
@@ -443,7 +445,7 @@ onMounted(() => {
 .doc-name {
   font-size: 14px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -452,14 +454,14 @@ onMounted(() => {
 
 .doc-meta {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .separator {
-  color: #d1d5db;
+  color: var(--border-secondary);
 }
 
 .doc-actions {
@@ -476,26 +478,26 @@ onMounted(() => {
 .btn-action {
   padding: 8px;
   background: transparent;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-primary);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .btn-action:hover {
-  background: #f3f4f6;
-  border-color: #d1d5db;
-  color: #111827;
+  background: var(--bg-secondary);
+  border-color: var(--border-secondary);
+  color: var(--text-primary);
 }
 
 .btn-action.btn-danger:hover {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  color: #dc2626;
+  background: rgba(239, 68, 68, 0.15);
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 /* 预览窗口样式 */
@@ -527,17 +529,17 @@ onMounted(() => {
 
 .preview-header {
   padding: 20px 24px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border-primary);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #f9fafb;
+  background: var(--bg-secondary);
 }
 
 .preview-header h4 {
   font-size: 16px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -561,7 +563,7 @@ onMounted(() => {
 }
 
 .chunk-item:hover {
-  border-color: #d1d5db;
+  border-color: var(--border-secondary);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
@@ -570,26 +572,26 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 10px 14px;
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .chunk-id {
   font-size: 13px;
   font-weight: 600;
-  color: #3b82f6;
+  color: var(--accent-primary);
 }
 
 .chunk-size {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .chunk-text {
   padding: 14px;
   font-size: 14px;
   line-height: 1.6;
-  color: #374151;
+  color: var(--text-primary);
   white-space: pre-wrap;
   word-wrap: break-word;
 }
