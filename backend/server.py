@@ -212,9 +212,30 @@ def healthz() -> JSONResponse:  # type: ignore[override]
                     "milvus_collection": coll.name if hasattr(coll, "name") else None,
                     "milvus_entities": int(num) if isinstance(num, int) else num,
                 })
+                
+                # 统计唯一文档数
+                try:
+                    unique_paths = pipeline.list_paths(limit=10000)
+                    details["document_count"] = len(unique_paths)
+                except Exception:
+                    details["document_count"] = 0
+                    
             except Exception as e:
                 logger.warning(f"Milvus 状态检查失败: {e}")
                 details["milvus_warning"] = str(e)
+                details["document_count"] = 0
+        else:
+            # FAISS 或其他后端：统计文档数
+            try:
+                unique_paths = pipeline.list_paths(limit=10000)
+                details["document_count"] = len(unique_paths)
+                # 对于 FAISS，可以获取实体数
+                if active_backend == "faiss":
+                    faiss_index = getattr(store, "faiss_index", None)
+                    if faiss_index is not None:
+                        details["faiss_entities"] = faiss_index.ntotal
+            except Exception:
+                details["document_count"] = 0
         
         # 基础指标
         details.update({

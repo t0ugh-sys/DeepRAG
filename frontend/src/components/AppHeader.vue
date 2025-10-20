@@ -62,7 +62,8 @@ async function checkHealth() {
     if (res.data.ok) {
       status.value = 'ok';
       const d = res.data.details;
-      docCount.value = d.milvus_entities || 0;
+      // 优先使用 document_count（唯一文档数），回退到 milvus_entities（分片数）
+      docCount.value = d.document_count ?? d.milvus_entities ?? d.faiss_entities ?? 0;
     } else {
       status.value = 'offline';
     }
