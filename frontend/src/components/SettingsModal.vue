@@ -11,22 +11,34 @@
         <div class="setting-section">
           <h4 class="section-title">🤖 模型配置</h4>
           
-          <div class="setting-item">
-            <label class="setting-label">
-              <span>LLM 模型</span>
-              <span class="label-desc">用于生成回答的大语言模型</span>
+          <div class="model-selection">
+            <label class="selection-label">
+              <span>选择 LLM 模型</span>
+              <span class="label-desc">点击卡片选择要使用的大语言模型</span>
             </label>
-            <select 
-              v-model="settings.llmModel" 
-              class="setting-select"
-            >
-              <option v-for="model in availableModels" :key="model" :value="model">
-                {{ model }}
-              </option>
-            </select>
+            <div class="model-cards">
+              <div 
+                v-for="model in modelOptions" 
+                :key="model.value"
+                class="model-card"
+                :class="{ active: settings.llmModel === model.value }"
+                @click="selectModel(model.value)"
+              >
+                <div class="model-icon">{{ model.icon }}</div>
+                <div class="model-info">
+                  <div class="model-name">{{ model.name }}</div>
+                  <div class="model-desc">{{ model.desc }}</div>
+                </div>
+                <div class="model-check" v-if="settings.llmModel === model.value">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
           </div>
           
-          <div class="setting-item">
+          <div class="setting-item" style="margin-top: 20px;">
             <label class="setting-label">
               <span>嵌入模型</span>
               <span class="label-desc">用于文本向量化的模型</span>
@@ -240,8 +252,39 @@ const settings = ref({
 });
 
 const availableModels = ref(['deepseek-chat', 'qwen-turbo', 'qwen-plus', 'qwen-max']);
+const modelOptions = ref([
+  {
+    value: 'deepseek-chat',
+    name: 'DeepSeek Chat',
+    desc: '高性价比，推理能力强',
+    icon: '🚀'
+  },
+  {
+    value: 'qwen-turbo',
+    name: 'Qwen Turbo',
+    desc: '快速响应，适合日常对话',
+    icon: '⚡'
+  },
+  {
+    value: 'qwen-plus',
+    name: 'Qwen Plus',
+    desc: '平衡性能与成本，推荐',
+    icon: '✨'
+  },
+  {
+    value: 'qwen-max',
+    name: 'Qwen Max',
+    desc: '最强性能，复杂任务首选',
+    icon: '🎯'
+  }
+]);
 const cacheSize = ref(0);
 const cacheMaxSize = ref(256);
+
+// 选择模型
+function selectModel(modelValue) {
+  settings.value.llmModel = modelValue;
+}
 
 // 加载设置
 function loadSettings() {
@@ -363,6 +406,26 @@ async function loadAvailableModels() {
     const res = await api.getModels();
     if (res.data.ok) {
       availableModels.value = res.data.models;
+      
+      // 模型配置映射
+      const modelConfigMap = {
+        'deepseek-chat': { name: 'DeepSeek Chat', desc: '高性价比，推理能力强', icon: '🚀' },
+        'qwen-turbo': { name: 'Qwen Turbo', desc: '快速响应，适合日常对话', icon: '⚡' },
+        'qwen-plus': { name: 'Qwen Plus', desc: '平衡性能与成本，推荐', icon: '✨' },
+        'qwen-max': { name: 'Qwen Max', desc: '最强性能，复杂任务首选', icon: '🎯' },
+        'gpt-4': { name: 'GPT-4', desc: 'OpenAI 最强模型', icon: '🤖' },
+        'gpt-4o': { name: 'GPT-4o', desc: 'OpenAI 多模态模型', icon: '🌟' },
+        'gpt-3.5-turbo': { name: 'GPT-3.5 Turbo', desc: '快速且经济', icon: '💨' }
+      };
+      
+      // 根据后端返回的模型列表更新 modelOptions
+      modelOptions.value = res.data.models.map(model => ({
+        value: model,
+        name: modelConfigMap[model]?.name || model,
+        desc: modelConfigMap[model]?.desc || '大语言模型',
+        icon: modelConfigMap[model]?.icon || '🔮'
+      }));
+      
       // 如果当前模型不在列表中，设置为默认模型
       if (!availableModels.value.includes(settings.value.llmModel)) {
         settings.value.llmModel = res.data.default_model || availableModels.value[0];
@@ -538,6 +601,105 @@ onMounted(() => {
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 32px;
+}
+
+/* 模型选择卡片 */
+.model-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.selection-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.selection-label > span:first-child {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+}
+
+.model-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.model-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.model-card:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.model-card.active {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.model-card.active:hover {
+  background: #dbeafe;
+}
+
+.model-icon {
+  font-size: 32px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.model-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.model-desc {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.model-check {
+  color: #3b82f6;
+  flex-shrink: 0;
+  animation: checkIn 0.3s ease-out;
+}
+
+@keyframes checkIn {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .toggle-switch {
