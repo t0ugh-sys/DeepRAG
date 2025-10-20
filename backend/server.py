@@ -367,6 +367,9 @@ async def upsert_doc(
         
         if not final_path or text is None:
             return JSONResponse({"ok": False, "error": "path 或 text 为空"}, status_code=400)
+        
+        # 统一使用正斜杠，避免 Windows 路径混乱
+        final_path = final_path.replace("\\", "/")
         added = local.add_document(final_path, text or "")
         logger.info(f"✓ 文档上传成功: {final_path}, 新增 {added} 个分片")
         return JSONResponse({"ok": True, "added_chunks": added})

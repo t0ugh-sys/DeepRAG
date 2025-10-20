@@ -49,8 +49,10 @@ def load_documents(docs_dir: str) -> List[Dict[str, Any]]:
                 text = read_markdown_file(full_path)
             else:
                 text = read_pdf_file(full_path)
+            # 统一使用正斜杠，避免 Windows 路径混乱
+            normalized_path = full_path.replace("\\", "/")
             documents.append({
-                "path": full_path,
+                "path": normalized_path,
                 "text": text,
             })
     return documents
