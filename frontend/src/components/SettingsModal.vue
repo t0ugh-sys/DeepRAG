@@ -252,6 +252,40 @@
           </div>
         </div>
         
+        <!-- 提示词设置 -->
+        <div class="setting-section">
+          <h4 class="section-title">💬 提示词配置</h4>
+          
+          <div class="setting-item">
+            <label class="setting-label">
+              <span>系统提示词</span>
+              <span class="label-desc">自定义 AI 的回答风格和行为规则</span>
+            </label>
+            <textarea 
+              v-model="settings.systemPrompt" 
+              class="prompt-textarea"
+              rows="8"
+              placeholder="你是一个专业的知识库检索助手..."
+            ></textarea>
+            <div class="prompt-tips">
+              <span class="tip-item">💡 提示：使用 {context} 表示检索到的文档内容</span>
+              <span class="tip-item">💡 使用 {question} 表示用户的问题</span>
+            </div>
+          </div>
+          
+          <div class="preset-prompts">
+            <button class="preset-prompt-btn" @click="applyPromptPreset('default')">
+              📝 默认提示词
+            </button>
+            <button class="preset-prompt-btn" @click="applyPromptPreset('detailed')">
+              📚 详细解答
+            </button>
+            <button class="preset-prompt-btn" @click="applyPromptPreset('concise')">
+              ⚡ 简洁回答
+            </button>
+          </div>
+        </div>
+        
         <!-- 界面设置 -->
         <div class="setting-section">
           <h4 class="section-title">🎨 界面配置</h4>
@@ -388,7 +422,22 @@ const settings = ref({
   rerankTopN: 5,
   darkMode: false,
   streamDelay: 5,
-  autoSave: true
+  autoSave: true,
+  systemPrompt: `你是一个专业的知识库检索助手。
+
+**核心规则**：
+1. 仔细阅读下列所有文档片段，全面理解其内容
+2. 从文档中寻找与问题相关的所有信息，包括直接和间接相关的内容
+3. 综合多个文档片段的信息进行回答
+4. 如果文档中确实没有答案，明确告知用户
+5. 回答要详细、具体，尽可能引用原文
+
+**输出格式要求**：
+1. 使用规范的中文标点符号（，。；！？）
+2. 合理分段，每段讲一个主题
+3. 使用标题、列表等 Markdown 格式提高可读性
+4. 数字和英文前后加空格（例如：YOLOv8 的结构）
+5. 避免句子过长，适当断句`
 });
 
 const availableModels = ref(['deepseek-chat', 'qwen-turbo', 'qwen-plus', 'qwen-max']);
@@ -470,6 +519,60 @@ function selectModel(modelValue) {
 // 选择嵌入模型
 function selectEmbedding(modelValue) {
   settings.value.embeddingModel = modelValue;
+}
+
+// 应用提示词预设
+function applyPromptPreset(preset) {
+  switch (preset) {
+    case 'default':
+      settings.value.systemPrompt = `你是一个专业的知识库检索助手。
+
+**核心规则**：
+1. 仔细阅读下列所有文档片段，全面理解其内容
+2. 从文档中寻找与问题相关的所有信息，包括直接和间接相关的内容
+3. 综合多个文档片段的信息进行回答
+4. 如果文档中确实没有答案，明确告知用户
+5. 回答要详细、具体，尽可能引用原文
+
+**输出格式要求**：
+1. 使用规范的中文标点符号（，。；！？）
+2. 合理分段，每段讲一个主题
+3. 使用标题、列表等 Markdown 格式提高可读性
+4. 数字和英文前后加空格（例如：YOLOv8 的结构）
+5. 避免句子过长，适当断句`;
+      break;
+    case 'detailed':
+      settings.value.systemPrompt = `你是一个详细的技术文档助手。
+
+**回答原则**：
+1. 提供深入、全面的解答，覆盖所有相关细节
+2. 使用专业术语，并提供必要的解释
+3. 引用原文时使用引用格式
+4. 提供示例和类比帮助理解
+5. 如果有多种解释，列举所有可能性
+
+**格式要求**：
+- 使用标题和子标题组织内容
+- 使用编号列表展示步骤
+- 使用代码块展示技术内容
+- 重点内容使用粗体或斜体`;
+      break;
+    case 'concise':
+      settings.value.systemPrompt = `你是一个简洁高效的助手。
+
+**回答原则**：
+1. 提供简明扼要的答案，直击要点
+2. 避免冗余信息，只保留核心内容
+3. 使用简短的段落和句子
+4. 优先使用列表而非长段落
+5. 如果问题简单，一句话回答即可
+
+**格式要求**：
+- 简洁的标题
+- 要点列表
+- 必要时提供简短示例`;
+      break;
+  }
 }
 
 // 应用检索预设
@@ -958,6 +1061,76 @@ onMounted(async () => {
 .preset-btn.active:hover {
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   transform: translateY(-1px);
+}
+
+/* 提示词配置 */
+.prompt-textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 200px;
+  background: #f9fafb;
+  color: #374151;
+  transition: all 0.2s;
+}
+
+.prompt-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.prompt-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.tip-item {
+  font-size: 12px;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.preset-prompts {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.preset-prompt-btn {
+  flex: 1;
+  min-width: 140px;
+  padding: 10px 16px;
+  background: #f3f4f6;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.preset-prompt-btn:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 /* 模型选择卡片 */

@@ -51,16 +51,14 @@
     </div>
     
     <div class="composer">
-      <div class="composer-controls">
-        <div class="model-selector">
-          <select v-model="selectedModel" class="model-dropdown">
-            <option v-for="model in availableModels" :key="model.value" :value="model.value">
-              {{ model.icon }} {{ model.name }}
-            </option>
-          </select>
-        </div>
-      </div>
       <div class="input-wrapper">
+        <!-- 模型选择器嵌入输入框左侧 -->
+        <select v-model="selectedModel" class="model-selector">
+          <option v-for="model in availableModels" :key="model.value" :value="model.value">
+            {{ model.icon }} {{ model.name }}
+          </option>
+        </select>
+        
         <textarea
           v-model="question" 
           @keydown.enter.exact.prevent="sendQuestion"
