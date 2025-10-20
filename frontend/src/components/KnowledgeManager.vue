@@ -157,30 +157,13 @@ async function loadDocuments() {
   try {
     const res = await api.listPaths();
     if (res.data.ok) {
-      // 将路径转换为文档对象，并计算每个文档的分片数
-      const pathCounts = {};
-      
-      // 先获取所有路径
-      const paths = res.data.paths || [];
-      
-      // 然后为每个路径获取分片数量
-      const docs = await Promise.all(paths.map(async (path) => {
-        try {
-          const exportRes = await api.exportPath(path);
-          const chunks = exportRes.data.chunks || [];
-          return {
-            path: path,
-            chunks: chunks.length
-          };
-        } catch (e) {
-          return {
-            path: path,
-            chunks: 0
-          };
-        }
+      // 新版 API 直接返回文档统计信息
+      const docs = res.data.documents || [];
+      documents.value = docs.map(doc => ({
+        path: doc.path,
+        chunks: doc.chunk_count || 0,
+        lastUpdated: doc.last_updated || new Date().toISOString()
       }));
-      
-      documents.value = docs;
     }
   } catch (e) {
     console.error('加载文档列表失败:', e);

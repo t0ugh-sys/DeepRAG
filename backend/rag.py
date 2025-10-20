@@ -319,6 +319,39 @@ class VectorStore:
             if len(paths) >= limit:
                 break
         return paths
+    
+    def list_paths_with_stats(self, limit: int = 1000) -> List[dict]:
+        """返回文档路径及其统计信息（分片数、最后更新时间等）"""
+        from collections import Counter
+        from datetime import datetime
+        
+        if self.backend == "milvus" and self.collection is not None:
+            try:
+                recs = self.collection.query(expr="", output_fields=["path", "chunk_id"], limit=limit * 100)
+            except Exception:
+                recs = []
+            
+            # 统计每个路径的分片数
+            path_chunks = Counter(r.get("path") for r in recs if r.get("path"))
+            result = []
+            for path, chunk_count in list(path_chunks.items())[:limit]:
+                result.append({
+                    "path": path,
+                    "chunk_count": chunk_count,
+                    "last_updated": datetime.now().isoformat()  # Milvus 暂不支持时间戳
+                })
+            return result
+        
+        # FAISS 后端：从本地 meta 统计
+        path_chunks = Counter(m.get("path") for m in self.metas if m.get("path"))
+        result = []
+        for path, chunk_count in list(path_chunks.items())[:limit]:
+            result.append({
+                "path": path,
+                "chunk_count": chunk_count,
+                "last_updated": datetime.now().isoformat()
+            })
+        return result
 
 
 def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: bool = True) -> str:
@@ -496,5 +529,8 @@ class RAGPipeline:
 
     def list_paths(self, limit: int = 1000) -> List[str]:
         return self.store.list_paths(limit)
+    
+    def list_paths_with_stats(self, limit: int = 1000) -> List[dict]:
+        return self.store.list_paths_with_stats(limit)
 
 

@@ -16,18 +16,18 @@ def _load_env_files():
             try:
                 if os.path.exists(_env_path):
                     load_dotenv(dotenv_path=_env_path, override=True)
-                    print(f"✓ 加载环境变量文件: {_env_path}")
+                    print(f"[OK] Loaded env file: {_env_path}")
                     # 调试：立即检查是否加载成功
                     api_key = os.getenv("OPENAI_API_KEY")
                     if api_key:
-                        print(f"  → OPENAI_API_KEY 已加载 (长度: {len(api_key)})")
+                        print(f"  -> OPENAI_API_KEY loaded (length: {len(api_key)})")
                     else:
-                        print(f"  → OPENAI_API_KEY 仍然为空！")
+                        print(f"  -> OPENAI_API_KEY still empty!")
             except Exception as e:
-                print(f"✗ 加载环境变量文件失败: {_env_path}, {e}")
+                print(f"[ERROR] Failed to load env file: {_env_path}, {e}")
     except Exception as e:
         # 若未安装 python-dotenv，跳过，不影响运行
-        print(f"✗ python-dotenv 未安装: {e}")
+        print(f"[ERROR] python-dotenv not installed: {e}")
 
 # 立即执行加载
 _load_env_files()
@@ -91,9 +91,9 @@ class Settings:
     def __post_init__(self):
         # 调试：打印 API key 是否存在
         if self.openai_api_key:
-            print(f"✓ OPENAI_API_KEY loaded (length: {len(self.openai_api_key)})")
+            print(f"[OK] OPENAI_API_KEY loaded (length: {len(self.openai_api_key)})")
         else:
-            print("✗ OPENAI_API_KEY not found in environment!")
+            print("[ERROR] OPENAI_API_KEY not found in environment!")
 
 
 def ensure_dirs(path: str) -> None:

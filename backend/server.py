@@ -398,7 +398,8 @@ def list_doc_paths(limit: int = 1000, namespace: str | None = None) -> JSONRespo
         return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
-    return JSONResponse({"ok": True, "paths": local.list_paths(limit)})
+    docs_stats = local.list_paths_with_stats(limit)
+    return JSONResponse({"ok": True, "documents": docs_stats})
 
 
 @app.get("/export")
