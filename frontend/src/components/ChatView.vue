@@ -53,8 +53,8 @@
     <div class="composer">
       <div class="input-wrapper">
         <!-- 模型选择器 - 美化版 -->
-        <div class="model-selector-wrapper">
-          <button class="model-selector-btn" @click="toggleModelDropdown">
+        <div class="model-selector-wrapper" @click.stop>
+          <button class="model-selector-btn" @click.stop="toggleModelDropdown">
             <span class="model-icon">{{ getCurrentModel().icon }}</span>
             <span class="model-name">{{ getCurrentModel().name }}</span>
             <svg class="dropdown-arrow" :class="{ open: showModelDropdown }" width="12" height="12" viewBox="0 0 24 24" fill="none">
@@ -62,7 +62,7 @@
             </svg>
           </button>
           
-          <div v-if="showModelDropdown" class="model-dropdown" @click.stop>
+          <div v-if="showModelDropdown" class="model-dropdown">
             <div class="dropdown-header">选择模型</div>
             <div 
               v-for="model in availableModels" 
@@ -103,7 +103,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch, onMounted } from 'vue';
+import { ref, nextTick, watch, onMounted, onUnmounted } from 'vue';
 import { marked } from 'marked';
 import api from '../api';
 
@@ -160,7 +160,9 @@ function getCurrentModel() {
 }
 
 function toggleModelDropdown() {
+  console.log('toggleModelDropdown called, current:', showModelDropdown.value);
   showModelDropdown.value = !showModelDropdown.value;
+  console.log('toggleModelDropdown after, new:', showModelDropdown.value);
 }
 
 function selectModelAndClose(modelValue) {
@@ -170,12 +172,23 @@ function selectModelAndClose(modelValue) {
 }
 
 // 点击外部关闭下拉菜单
+let clickOutsideHandler = null;
+
 onMounted(() => {
-  document.addEventListener('click', (e) => {
-    if (showModelDropdown.value) {
+  clickOutsideHandler = (e) => {
+    const wrapper = document.querySelector('.model-selector-wrapper');
+    if (wrapper && !wrapper.contains(e.target) && showModelDropdown.value) {
       showModelDropdown.value = false;
     }
-  });
+  };
+  
+  document.addEventListener('click', clickOutsideHandler);
+});
+
+onUnmounted(() => {
+  if (clickOutsideHandler) {
+    document.removeEventListener('click', clickOutsideHandler);
+  }
 });
 
 async function sendQuestion() {
@@ -529,7 +542,7 @@ onMounted(() => {
 
 .input-wrapper {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 12px;
   width: 100%;
   max-width: 900px;
