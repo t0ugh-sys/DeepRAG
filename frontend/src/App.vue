@@ -14,6 +14,8 @@
         @export-conv="exportConv"
         @clear-conv="clearConv"
         @import-docs="showImportModal = true"
+        @manage-knowledge="showKnowledgeManager = true"
+        @open-settings="showSettings = true"
       />
       
       <ChatView 
@@ -28,6 +30,20 @@
       @close="showImportModal = false"
       @refresh="loadPaths"
     />
+    
+    <!-- 知识库管理窗口 -->
+    <KnowledgeManager 
+      v-if="showKnowledgeManager"
+      @close="showKnowledgeManager = false"
+      @refresh="loadPaths"
+    />
+    
+    <!-- 设置窗口 -->
+    <SettingsModal 
+      v-if="showSettings"
+      @close="showSettings = false"
+      @settings-changed="handleSettingsChanged"
+    />
   </div>
 </template>
 
@@ -37,6 +53,8 @@ import AppHeader from './components/AppHeader.vue';
 import Sidebar from './components/Sidebar.vue';
 import ChatView from './components/ChatView.vue';
 import ImportModal from './components/ImportModal.vue';
+import KnowledgeManager from './components/KnowledgeManager.vue';
+import SettingsModal from './components/SettingsModal.vue';
 import api from './api';
 
 const theme = ref(localStorage.getItem('theme') || 'light');
@@ -45,6 +63,8 @@ const currentConvId = ref(localStorage.getItem('currentConvId') || null);
 const sources = ref([]);
 const paths = ref([]);
 const showImportModal = ref(false);
+const showKnowledgeManager = ref(false);
+const showSettings = ref(false);
 
 // 如果没有会话，创建一个默认会话
 if (conversations.value.length === 0) {
@@ -176,6 +196,11 @@ async function loadPaths() {
   } catch (e) {
     console.error(e);
   }
+}
+
+function handleSettingsChanged(newSettings) {
+  // 处理设置变更
+  console.log('设置已更新:', newSettings);
 }
 
 onMounted(() => {
