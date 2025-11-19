@@ -447,6 +447,109 @@ def explain_retrieval(req: ExplainRetrievalRequest, x_api_key: str | None = None
         return error_response(message=str(e))
 
 
+# ==================== 文档分块可视化 API ====================
+
+class VisualizeChunksRequest(BaseModel):
+    path: str
+
+
+@app.post("/visualize_chunks")
+def visualize_chunks(req: VisualizeChunksRequest, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
+    """可视化文档的分块结果"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
+    
+    ns = namespace or settings.default_namespace
+    local = RAGPipeline(settings, ns)
+    
+    try:
+        # 从索引中获取该文档的所有分块
+        chunks = []
+        for i, (text, meta) in enumerate(zip(local.store.texts, local.store.metas)):
+            if meta.get("path") == req.path:
+                chunks.append({
+                    "chunk_id": meta.get("chunk_id", i),
+                    "text": text,
+                    "char_count": len(text),
+                    "word_count": len(text.split()),
+                    "page": meta.get("page"),
+                    "has_tables": meta.get("has_tables", False),
+                    "doc_type": meta.get("doc_type"),
+                    "metadata": meta
+                })
+        
+        if not chunks:
+            return error_response(message=f"未找到文档: {req.path}")
+        
+        # 排序
+        chunks.sort(key=lambda x: x["chunk_id"])
+        
+        # 统计信息
+        total_chars = sum(c["char_count"] for c in chunks)
+        total_words = sum(c["word_count"] for c in chunks)
+        avg_chunk_size = total_chars / len(chunks) if chunks else 0
+        
+        stats = {
+            "total_chunks": len(chunks),
+            "total_chars": total_chars,
+            "total_words": total_words,
+            "avg_chunk_size": round(avg_chunk_size, 2),
+            "min_chunk_size": min(c["char_count"] for c in chunks) if chunks else 0,
+            "max_chunk_size": max(c["char_count"] for c in chunks) if chunks else 0,
+            "has_tables": any(c["has_tables"] for c in chunks),
+            "doc_type": chunks[0]["doc_type"] if chunks else None
+        }
+        
+        return success_response(data={
+            "path": req.path,
+            "chunks": chunks,
+            "stats": stats
+        })
+    
+    except Exception as e:
+        logger.error(f"文档分块可视化失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.get("/docs/preview")
+def preview_document_chunks(path: str, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
+    """预览文档的分块情况（GET 方式）"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
+    
+    ns = namespace or settings.default_namespace
+    local = RAGPipeline(settings, ns)
+    
+    try:
+        # 获取该文档的所有分块（只返回摘要）
+        chunks_preview = []
+        for i, (text, meta) in enumerate(zip(local.store.texts, local.store.metas)):
+            if meta.get("path") == path:
+                chunks_preview.append({
+                    "chunk_id": meta.get("chunk_id", i),
+                    "preview": text[:100] + "..." if len(text) > 100 else text,
+                    "char_count": len(text),
+                    "page": meta.get("page")
+                })
+        
+        if not chunks_preview:
+            return error_response(message=f"未找到文档: {path}")
+        
+        chunks_preview.sort(key=lambda x: x["chunk_id"])
+        
+        return success_response(data={
+            "path": path,
+            "total_chunks": len(chunks_preview),
+            "chunks": chunks_preview
+        })
+    
+    except Exception as e:
+        logger.error(f"文档预览失败: {e}")
+        return error_response(message=str(e))
+
+
 from pydantic import BaseModel as _BaseModel
 
 

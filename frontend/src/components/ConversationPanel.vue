@@ -1,0 +1,288 @@
+<template>
+  <div class="conversation-panel">
+    <div class="panel-header">
+      <h3>💬 对话历史</h3>
+      <button @click="createNewConversation" class="new-btn" title="新建对话">
+        ➕ 新对话
+      </button>
+    </div>
+
+    <div v-if="loading" class="loading">
+      <div class="spinner"></div>
+    </div>
+
+    <div v-else class="conversations-list">
+      <div 
+        v-for="conv in conversations" 
+        :key="conv.id"
+        class="conversation-item"
+        :class="{ active: conv.id === activeConversationId }"
+        @click="selectConversation(conv.id)"
+      >
+        <div class="conv-header">
+          <span class="conv-title">{{ conv.title || '新对话' }}</span>
+          <button 
+            @click.stop="deleteConversation(conv.id)" 
+            class="delete-btn"
+            title="删除对话"
+          >
+            🗑️
+          </button>
+        </div>
+        <div class="conv-meta">
+          <span class="conv-time">{{ formatTime(conv.created_at) }}</span>
+          <span class="conv-count">{{ conv.message_count }} 条消息</span>
+        </div>
+      </div>
+
+      <div v-if="conversations.length === 0" class="empty-state">
+        <p>暂无对话历史</p>
+        <p class="hint">点击"新对话"开始聊天</p>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+
+const emit = defineEmits(['select-conversation', 'new-conversation'])
+
+const loading = ref(false)
+const conversations = ref([])
+const activeConversationId = ref(null)
+
+const loadConversations = async () => {
+  loading.value = true
+  try {
+    const response = await fetch('http://localhost:8000/conversations')
+    const result = await response.json()
+    
+    if (result.ok) {
+      conversations.value = result.data.conversations || []
+    }
+  } catch (err) {
+    console.error('加载对话列表失败:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+const selectConversation = (id) => {
+  activeConversationId.value = id
+  emit('select-conversation', id)
+}
+
+const createNewConversation = () => {
+  activeConversationId.value = null
+  emit('new-conversation')
+}
+
+const deleteConversation = async (id) => {
+  if (!confirm('确定要删除这个对话吗？')) return
+  
+  try {
+    const response = await fetch(`http://localhost:8000/conversations/${id}`, {
+      method: 'DELETE'
+    })
+    
+    const result = await response.json()
+    
+    if (result.ok) {
+      conversations.value = conversations.value.filter(c => c.id !== id)
+      if (activeConversationId.value === id) {
+        activeConversationId.value = null
+      }
+    }
+  } catch (err) {
+    console.error('删除对话失败:', err)
+    alert('删除失败')
+  }
+}
+
+const formatTime = (timestamp) => {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diff = now - date
+  
+  // 小于1分钟
+  if (diff < 60000) {
+    return '刚刚'
+  }
+  
+  // 小于1小时
+  if (diff < 3600000) {
+    return `${Math.floor(diff / 60000)} 分钟前`
+  }
+  
+  // 小于1天
+  if (diff < 86400000) {
+    return `${Math.floor(diff / 3600000)} 小时前`
+  }
+  
+  // 小于7天
+  if (diff < 604800000) {
+    return `${Math.floor(diff / 86400000)} 天前`
+  }
+  
+  // 显示日期
+  return date.toLocaleDateString('zh-CN', { 
+    month: 'short', 
+    day: 'numeric' 
+  })
+}
+
+onMounted(() => {
+  loadConversations()
+})
+
+// 暴露方法给父组件
+defineExpose({
+  loadConversations
+})
+</script>
+
+<style scoped>
+.conversation-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.new-btn {
+  padding: 6px 12px;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.new-btn:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+}
+
+.spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.conversations-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.conversation-item {
+  padding: 12px;
+  margin-bottom: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.conversation-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--primary-color);
+}
+
+.conversation-item.active {
+  background: var(--primary-bg);
+  border-color: var(--primary-color);
+}
+
+.conv-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.conv-title {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 14px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+  padding: 4px;
+}
+
+.delete-btn:hover {
+  opacity: 1;
+}
+
+.conv-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.conv-time {
+  opacity: 0.8;
+}
+
+.conv-count {
+  opacity: 0.6;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-secondary);
+}
+
+.empty-state p {
+  margin: 8px 0;
+}
+
+.empty-state .hint {
+  font-size: 12px;
+  opacity: 0.7;
+}
+</style>

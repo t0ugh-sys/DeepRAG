@@ -151,6 +151,8 @@ npm run dev  # 访问 http://localhost:5173
 - `POST /docs` - 上传文档（支持 PDF/Word/Excel）
 - `DELETE /docs?path=xxx` - 删除文档
 - `GET /docs/paths` - 列出已入库路径
+- `GET /docs/preview?path=xxx` - 预览文档分块
+- `POST /visualize_chunks` - 可视化文档分块详情
 - `GET /export?path=xxx` - 导出文档分块
 
 **对话管理**
