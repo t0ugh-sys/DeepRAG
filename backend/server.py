@@ -384,6 +384,69 @@ def analyze_query(req: QueryAnalysisRequest, x_api_key: str | None = None) -> Di
         return error_response(message=str(e))
 
 
+# ==================== 检索结果解释 API ====================
+
+class ExplainRetrievalRequest(BaseModel):
+    question: str
+    top_k: int = 5
+
+
+@app.post("/explain_retrieval")
+def explain_retrieval(req: ExplainRetrievalRequest, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
+    """解释检索结果，显示为什么检索到这些文档"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
+    
+    ns = namespace or settings.default_namespace
+    local = RAGPipeline(settings, ns)
+    
+    try:
+        # 执行检索
+        recs = local.store.search(req.question, req.top_k)
+        
+        # 转换为字典格式
+        chunks = [
+            {
+                "text": r.text,
+                "score": r.score,
+                "meta": r.meta
+            }
+            for r in recs
+        ]
+        
+        # 生成解释
+        from backend.retrieval_explainer import create_explainer
+        explainer = create_explainer()
+        explanations = explainer.explain_retrieval(req.question, chunks)
+        summary = explainer.generate_summary(explanations)
+        
+        # 格式化返回
+        results = []
+        for exp in explanations:
+            results.append({
+                "chunk_id": exp.chunk_id,
+                "text": exp.text,
+                "highlight_text": exp.highlight_text,
+                "score": exp.score_breakdown.final_score,
+                "relevance_level": exp.relevance_level,
+                "matched_keywords": exp.score_breakdown.matched_keywords or [],
+                "semantic_similarity": exp.score_breakdown.semantic_similarity,
+                "explanation": exp.score_breakdown.explanation,
+                "metadata": exp.metadata
+            })
+        
+        return success_response(data={
+            "query": req.question,
+            "results": results,
+            "summary": summary
+        })
+    
+    except Exception as e:
+        logger.error(f"检索解释失败: {e}")
+        return error_response(message=str(e))
+
+
 from pydantic import BaseModel as _BaseModel
 
 
