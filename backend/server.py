@@ -308,6 +308,82 @@ def ask_stream(req: AskRequest, x_api_key: str | None = None, namespace: str | N
     return StreamingResponse(sse(), media_type="text/event-stream")
 
 
+# ==================== 查询改写相关 API ====================
+
+class QueryRewriteRequest(BaseModel):
+    question: str
+    strategy: str = "expand"  # expand/decompose/hyde/multi
+    top_k: int | None = None
+    rerank_enabled: bool | None = None
+    rerank_top_n: int | None = None
+    model: str | None = None
+
+
+class QueryRewriteResponse(BaseModel):
+    answer: str
+    sources: List[Dict[str, Any]]
+    metadata: Dict[str, Any]
+
+
+@app.post("/ask_with_rewriting", response_model=QueryRewriteResponse)
+def ask_with_query_rewriting(req: QueryRewriteRequest, x_api_key: str | None = None, namespace: str | None = None) -> QueryRewriteResponse:
+    """使用查询改写增强检索效果"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
+    
+    ns = namespace or settings.default_namespace
+    local = RAGPipeline(settings, ns)
+    
+    try:
+        answer, recs, metadata = local.ask_with_query_rewriting(
+            req.question,
+            strategy=req.strategy,
+            top_k=req.top_k,
+            rerank_enabled=req.rerank_enabled,
+            rerank_top_n=req.rerank_top_n,
+            model=req.model
+        )
+        
+        sources = [
+            {
+                "path": r.meta.get("path"),
+                "chunk_id": r.meta.get("chunk_id"),
+                "score": r.score,
+                "text": r.text,
+                "page": r.meta.get("page"),
+                "has_tables": r.meta.get("has_tables"),
+                "doc_type": r.meta.get("doc_type")
+            }
+            for r in recs
+        ]
+        
+        return QueryRewriteResponse(answer=answer, sources=sources, metadata=metadata)
+    
+    except Exception as e:
+        logger.error(f"查询改写失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class QueryAnalysisRequest(BaseModel):
+    question: str
+
+
+@app.post("/analyze_query")
+def analyze_query(req: QueryAnalysisRequest, x_api_key: str | None = None) -> Dict[str, Any]:
+    """分析查询特征并推荐最佳改写策略"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
+    
+    try:
+        analysis = pipeline.analyze_query(req.question)
+        return success_response(data=analysis)
+    except Exception as e:
+        logger.error(f"查询分析失败: {e}")
+        return error_response(message=str(e))
+
+
 from pydantic import BaseModel as _BaseModel
 
 

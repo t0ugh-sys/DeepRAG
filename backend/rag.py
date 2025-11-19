@@ -458,7 +458,7 @@ class RAGPipeline:
     """
     RAG (检索增强生成) 主流程管道
     
-    整合向量检索、BM25、Reranker 和 LLM 生成，提供完整的问答能力
+    整合向量检索、BM25、Reranker、查询改写和 LLM 生成，提供完整的问答能力
     """
     
     def __init__(self, settings: Settings, namespace: str | None = None) -> None:
@@ -496,6 +496,20 @@ class RAGPipeline:
                 self.reranker = FlagReranker(settings.reranker_model_name, use_fp16=True)
             except Exception:
                 self.reranker = None
+        
+        # 初始化查询改写器（可选）
+        self.query_rewriter = None
+        if settings.openai_api_key and settings.openai_base_url:
+            try:
+                from backend.query_rewriter import QueryRewriter
+                self.query_rewriter = QueryRewriter(
+                    api_key=settings.openai_api_key,
+                    base_url=settings.openai_base_url,
+                    model=settings.llm_model
+                )
+            except Exception as e:
+                import logging
+                logging.getLogger("rag").warning(f"查询改写器初始化失败: {e}")
     
     def _get_client_for_model(self, model: str) -> OpenAI:
         """根据模型名称选择对应的客户端"""
@@ -595,6 +609,111 @@ class RAGPipeline:
                     yield delta
 
         return _gen(), recs
+    
+    def ask_with_query_rewriting(
+        self, 
+        question: str, 
+        strategy: str = "expand",
+        top_k: int | None = None,
+        rerank_enabled: bool | None = None,
+        rerank_top_n: int | None = None,
+        model: str | None = None
+    ) -> Tuple[str, List[RetrievedChunk], Dict[str, Any]]:
+        """
+        使用查询改写增强检索效果
+        
+        Args:
+            question: 原始查询
+            strategy: 改写策略 (expand/decompose/hyde/multi)
+            top_k: 每个查询返回的文档数
+            rerank_enabled: 是否启用重排
+            rerank_top_n: 重排后保留的文档数
+            model: LLM 模型
+        
+        Returns:
+            (答案, 检索片段列表, 元数据)
+            元数据包含: original_query, rewritten_queries, strategy
+        """
+        if not self.query_rewriter:
+            # 查询改写器未初始化，回退到普通检索
+            answer, recs = self.ask(question, top_k, rerank_enabled, rerank_top_n, model)
+            return answer, recs, {
+                "original_query": question,
+                "rewritten_queries": [question],
+                "strategy": "none",
+                "note": "查询改写器未启用"
+            }
+        
+        # 1. 改写查询
+        rewritten_queries = self.query_rewriter.rewrite_for_retrieval(question, strategy)
+        
+        # 2. 对每个改写后的查询进行检索
+        k = top_k or self.settings.top_k
+        all_recs: List[RetrievedChunk] = []
+        seen_texts = set()
+        
+        for query in rewritten_queries:
+            recs = self.store.search(query, k)
+            # 去重：避免相同文档片段重复出现
+            for rec in recs:
+                if rec.text not in seen_texts:
+                    seen_texts.add(rec.text)
+                    all_recs.append(rec)
+        
+        # 3. 对合并后的结果进行重排（可选）
+        use_rr = (self.reranker is not None) and (self.settings.reranker_enabled if rerank_enabled is None else rerank_enabled)
+        top_n = rerank_top_n or self.settings.reranker_top_n
+        
+        if use_rr and all_recs:
+            # 使用原始查询进行重排
+            pairs = [[question, r.text] for r in all_recs]
+            scores = self.reranker.compute_score(pairs)
+            for r, s in zip(all_recs, scores):
+                r.score = float(s)
+            all_recs = sorted(all_recs, key=lambda x: x.score, reverse=True)[:top_n]
+        else:
+            # 按原始分数排序并限制数量
+            all_recs = sorted(all_recs, key=lambda x: x.score, reverse=True)[:top_n]
+        
+        # 4. 生成答案
+        prompt = build_prompt(question, all_recs, strict_mode=self.settings.strict_mode)
+        target_model = model or self.settings.llm_model
+        client = self._get_client_for_model(target_model)
+        resp = client.chat.completions.create(
+            model=target_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+        answer = resp.choices[0].message.content or ""
+        
+        # 5. 返回结果和元数据
+        metadata = {
+            "original_query": question,
+            "rewritten_queries": rewritten_queries,
+            "strategy": strategy,
+            "total_retrieved": len(all_recs),
+            "unique_documents": len(seen_texts)
+        }
+        
+        return answer, all_recs, metadata
+    
+    def analyze_query(self, question: str) -> Dict[str, Any]:
+        """
+        分析查询特征并推荐最佳改写策略
+        
+        Args:
+            question: 用户查询
+        
+        Returns:
+            分析结果字典
+        """
+        if not self.query_rewriter:
+            return {
+                "error": "查询改写器未启用",
+                "recommended_strategy": "none"
+            }
+        
+        return self.query_rewriter.analyze_query(question)
 
     def add_document(self, path: str, text: str) -> int:
         return self.store.add_document(path, text)
