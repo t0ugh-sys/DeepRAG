@@ -13,12 +13,17 @@
 - 🎯 **智能重排**：可选 FlagEmbedding Reranker 提升相关性
 - 💾 **灵活存储**：Milvus 云原生 / FAISS 本地，自动回退
 - 🔐 **多租户**：命名空间隔离 + API Key 鉴权
-- 📄 **文档解析**：支持 `.txt`, `.md`, `.pdf`，智能分块
+- 📄 **深度文档理解**：
+  - 支持 `.txt`, `.md`, `.pdf`, `.docx`, `.xlsx`
+  - PDF 表格自动提取和解析
+  - OCR 图片文字识别（可选）
+  - 智能分块保持语义边界
+- 📍 **精确引用溯源**：记录页码信息，支持精确定位
 - 🌐 **现代前端**：Vue 3 + Vite，组件化架构，代码高亮，原生暗黑模式
 - 📊 **可观测性**：结构化日志、健康检查、监控指标
 - 🐳 **易部署**：Docker Compose 一键启动
-  -. 🧩 **模型可选**：设置里卡片式选择 DeepSeek / Qwen 等兼容模型
-  -. 🔎 **联网搜索（可选）**：可将实时搜索结果并入上下文（Serper / DuckDuckGo）
+- 🧩 **模型可选**：设置里卡片式选择 DeepSeek / Qwen 等兼容模型
+- 🔎 **联网搜索（可选）**：可将实时搜索结果并入上下文（Serper / DuckDuckGo）
 
 ## 🏗️ 架构
 
@@ -43,6 +48,7 @@
 - Python 3.10+
 - Node.js 20+ (前端)
 - Conda (推荐，用于 FAISS)
+- Tesseract OCR (可选，用于图片文字识别)
 
 ### 1. 安装依赖
 
@@ -51,6 +57,11 @@
 conda create -n rag-env python=3.10 -y
 conda activate rag-env
 pip install -r backend/requirements.txt
+
+# 可选：安装 Tesseract OCR（用于图片识别）
+# Windows: 下载安装 https://github.com/UB-Mannheim/tesseract/wiki
+# macOS: brew install tesseract tesseract-lang
+# Linux: sudo apt-get install tesseract-ocr tesseract-ocr-chi-sim
 
 # 前端
 cd frontend
@@ -123,13 +134,27 @@ npm run dev  # 访问 http://localhost:5173
 
 ### 主要端点
 
+**问答相关**
 - `POST /ask_stream` - 流式问答（SSE）
-- `POST /docs` - 上传文档
+- `GET /models` - 返回可用大模型列表
+
+**文档管理**
+- `POST /docs` - 上传文档（支持 PDF/Word/Excel）
 - `DELETE /docs?path=xxx` - 删除文档
 - `GET /docs/paths` - 列出已入库路径
-- `GET /models` - 返回可用大模型列表
+- `GET /export?path=xxx` - 导出文档分块
+
+**对话管理**
+- `POST /conversations` - 创建新对话
+- `GET /conversations` - 列出对话列表
+- `GET /conversations/{id}` - 获取对话详情
+- `DELETE /conversations/{id}` - 删除对话
+- `POST /conversations/{id}/messages` - 添加消息
+
+**系统管理**
 - `POST /namespaces/create` - 创建命名空间
 - `GET /healthz` - 健康检查
+- `GET /cache/stats` - 缓存统计
 
 ## 🐳 Docker 部署
 

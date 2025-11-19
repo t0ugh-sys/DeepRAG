@@ -499,3 +499,57 @@ def cache_clear(x_api_key: str | None = None) -> JSONResponse:  # type: ignore[o
     return JSONResponse({"ok": True, "message": "缓存已清空"})
 
 
+# ==================== 对话管理 API ====================
+from backend.conversation import ConversationManager
+
+conv_manager = ConversationManager()
+
+
+@app.post("/conversations")
+def create_conversation(title: str = "新对话", namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
+    """创建新对话"""
+    ns = namespace or settings.default_namespace
+    conversation = conv_manager.create_conversation(title=title, namespace=ns)
+    return JSONResponse({"ok": True, "conversation": conversation.to_dict()})
+
+
+@app.get("/conversations")
+def list_conversations(namespace: str | None = None, limit: int = 50) -> JSONResponse:  # type: ignore[override]
+    """列出对话列表"""
+    ns = namespace or settings.default_namespace
+    conversations = conv_manager.list_conversations(namespace=ns, limit=limit)
+    return JSONResponse({"ok": True, "conversations": conversations})
+
+
+@app.get("/conversations/{conv_id}")
+def get_conversation(conv_id: str) -> JSONResponse:  # type: ignore[override]
+    """获取对话详情"""
+    conversation = conv_manager.get_conversation(conv_id)
+    if not conversation:
+        return JSONResponse({"ok": False, "error": "对话不存在"}, status_code=404)
+    return JSONResponse({"ok": True, "conversation": conversation.to_dict()})
+
+
+@app.delete("/conversations/{conv_id}")
+def delete_conversation_endpoint(conv_id: str) -> JSONResponse:  # type: ignore[override]
+    """删除对话"""
+    success = conv_manager.delete_conversation(conv_id)
+    if success:
+        return JSONResponse({"ok": True, "message": "对话已删除"})
+    return JSONResponse({"ok": False, "error": "对话不存在"}, status_code=404)
+
+
+@app.post("/conversations/{conv_id}/messages")
+def add_message_to_conversation(
+    conv_id: str,
+    role: str,
+    content: str,
+    sources: List[Dict[str, Any]] | None = None
+) -> JSONResponse:  # type: ignore[override]
+    """添加消息到对话"""
+    conversation = conv_manager.add_message(conv_id, role, content, sources)
+    if not conversation:
+        return JSONResponse({"ok": False, "error": "对话不存在"}, status_code=404)
+    return JSONResponse({"ok": True, "conversation": conversation.to_dict()})
+
+

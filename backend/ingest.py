@@ -37,28 +37,61 @@ def read_pdf_file(path: str) -> str:
         raise RuntimeError(f"PDF 文件解析失败 {path}: {exc}") from exc
 
 
-def load_documents(docs_dir: str) -> List[Dict[str, Any]]:
-    supported_ext = {".txt", ".md", ".pdf"}
+def load_documents(docs_dir: str, enable_ocr: bool = False) -> List[Dict[str, Any]]:
+    """
+    加载文档，支持多种格式和深度解析
+    
+    Args:
+        docs_dir: 文档目录
+        enable_ocr: 是否启用 OCR
+        
+    Returns:
+        文档列表
+    """
+    from backend.document_parser import DocumentParser
+    
+    supported_ext = {".txt", ".md", ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".png", ".jpg", ".jpeg"}
     documents: List[Dict[str, Any]] = []
+    parser = DocumentParser(enable_ocr=enable_ocr)
+    
     ensure_dirs(docs_dir)
     for root, _, files in os.walk(docs_dir):
         for name in files:
             ext = os.path.splitext(name)[1].lower()
             if ext not in supported_ext:
                 continue
+            
             full_path = os.path.join(root, name)
-            if ext == ".txt":
-                text = read_text_file(full_path)
-            elif ext == ".md":
-                text = read_markdown_file(full_path)
-            else:
-                text = read_pdf_file(full_path)
-            # 统一使用正斜杠，避免 Windows 路径混乱
             normalized_path = full_path.replace("\\", "/")
-            documents.append({
-                "path": normalized_path,
-                "text": text,
-            })
+            
+            try:
+                # 使用新的文档解析器
+                parsed = parser.parse(full_path)
+                documents.append({
+                    "path": normalized_path,
+                    "text": parsed.text,
+                    "tables": parsed.tables,
+                    "images": parsed.images,
+                    "metadata": parsed.metadata,
+                    "page_info": parsed.page_info
+                })
+                print(f"✓ 解析成功: {name} (表格: {len(parsed.tables)}, 页面: {len(parsed.page_info)})")
+            except Exception as e:
+                print(f"✗ 解析失败: {name}, 错误: {e}")
+                # 回退到简单文本读取
+                try:
+                    text = read_text_file(full_path)
+                    documents.append({
+                        "path": normalized_path,
+                        "text": text,
+                        "tables": [],
+                        "images": [],
+                        "metadata": {},
+                        "page_info": []
+                    })
+                except Exception:
+                    continue
+    
     return documents
 
 
@@ -157,13 +190,28 @@ def build_index(docs: List[Dict[str, Any]], settings: Settings, index_dir: str) 
     for doc in docs:
         path = doc["path"]
         text = doc["text"]
+        page_info = doc.get("page_info", [])
         chunks = split_text(text)
+        
         for idx, chunk in enumerate(chunks):
             all_chunks.append(chunk)
+            
+            # 查找该分块对应的页码信息
+            chunk_start = text.find(chunk)
+            page_num = None
+            if page_info and chunk_start >= 0:
+                for page in page_info:
+                    if page["char_start"] <= chunk_start < page["char_end"]:
+                        page_num = page["page"]
+                        break
+            
             metadatas.append({
                 "path": path,
                 "chunk_id": idx,
                 "chunk_size": len(chunk),
+                "page": page_num,  # 添加页码信息
+                "has_tables": len(doc.get("tables", [])) > 0,
+                "doc_type": doc.get("metadata", {}).get("format", "unknown")
             })
 
     if not all_chunks:
