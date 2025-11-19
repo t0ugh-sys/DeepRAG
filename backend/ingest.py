@@ -25,12 +25,16 @@ def read_markdown_file(path: str) -> str:
 
 
 def read_pdf_file(path: str) -> str:
-    # 尽量少依赖：用 pdfminer.six 简单抽取文本
+    """读取 PDF 文件并提取文本"""
     try:
         from pdfminer.high_level import extract_text
-    except Exception as exc:  # pragma: no cover
+    except ImportError as exc:
         raise RuntimeError("请安装 pdfminer.six 以解析 PDF：pip install pdfminer.six") from exc
-    return extract_text(path)
+    
+    try:
+        return extract_text(path)
+    except Exception as exc:
+        raise RuntimeError(f"PDF 文件解析失败 {path}: {exc}") from exc
 
 
 def load_documents(docs_dir: str) -> List[Dict[str, Any]]:
@@ -59,6 +63,17 @@ def load_documents(docs_dir: str) -> List[Dict[str, Any]]:
 
 
 def split_text(text: str, chunk_size: int = 400, chunk_overlap: int = 80) -> List[str]:
+    """
+    智能文本分块，保持语义边界
+    
+    Args:
+        text: 待分块的文本
+        chunk_size: 目标块大小（字符数）
+        chunk_overlap: 块之间的重叠字符数
+    
+    Returns:
+        分块后的文本列表
+    """
     # Markdown 优化：按标题、列表、代码块分段，尽量保持语义边界
     # 关键改进：确保标题和内容在同一块中
     lines = text.splitlines()

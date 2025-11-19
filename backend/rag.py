@@ -26,7 +26,22 @@ class RetrievedChunk:
 
 
 class VectorStore:
+    """
+    向量存储抽象层，支持 Milvus 和 FAISS 双后端
+    
+    自动尝试连接 Milvus，失败时回退到本地 FAISS 索引
+    """
+    
     def __init__(self, meta_path: str, embedding_model: str, settings: Settings, namespace: str | None = None) -> None:
+        """
+        初始化向量存储
+        
+        Args:
+            meta_path: 元数据文件路径 (meta.jsonl)
+            embedding_model: 向量化模型名称
+            settings: 配置对象
+            namespace: 命名空间
+        """
         if not os.path.exists(meta_path):
             raise FileNotFoundError("未找到 meta.jsonl，请先运行 ingest 构建索引")
         self.namespace = namespace or settings.default_namespace
@@ -60,7 +75,10 @@ class VectorStore:
                 )
                 self.collection = Collection(collection_name)
                 self.backend = "milvus"
-            except Exception:
+            except Exception as e:
+                # Milvus 连接失败，回退到 FAISS
+                import logging
+                logging.getLogger("rag").debug(f"Milvus 连接失败，回退到 FAISS: {e}")
                 self.collection = None
                 self.backend = "faiss"
         if self.collection is None:
@@ -225,16 +243,6 @@ class VectorStore:
             return len(chunks)
 
         raise RuntimeError("当前向量后端未就绪，无法新增文档")
-        chunks = split_text(text)
-        if not chunks:
-            return 0
-        embeddings = self.embedder.encode(chunks, normalize_embeddings=True)
-        embeddings = np.array(embeddings).astype("float32")
-        paths = [path] * len(chunks)
-        chunk_ids = list(range(len(chunks)))
-        self.collection.insert([paths, chunk_ids, chunks, embeddings])
-        self.collection.flush()
-        return len(chunks)
 
     def delete_document(self, path: str) -> int:
         # Milvus 在线删除
@@ -447,7 +455,20 @@ def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: boo
 
 
 class RAGPipeline:
+    """
+    RAG (检索增强生成) 主流程管道
+    
+    整合向量检索、BM25、Reranker 和 LLM 生成，提供完整的问答能力
+    """
+    
     def __init__(self, settings: Settings, namespace: str | None = None) -> None:
+        """
+        初始化 RAG Pipeline
+        
+        Args:
+            settings: 配置对象
+            namespace: 命名空间，用于多租户隔离
+        """
         self.settings = settings
         meta_path = os.path.join(settings.index_dir, "meta.jsonl")
         self.store = VectorStore(meta_path, settings.embedding_model_name, settings, namespace)

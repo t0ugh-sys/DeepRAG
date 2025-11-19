@@ -17,8 +17,8 @@
 - 🌐 **现代前端**：Vue 3 + Vite，组件化架构，代码高亮，原生暗黑模式
 - 📊 **可观测性**：结构化日志、健康检查、监控指标
 - 🐳 **易部署**：Docker Compose 一键启动
--. 🧩 **模型可选**：设置里卡片式选择 DeepSeek / Qwen 等兼容模型
--. 🔎 **联网搜索（可选）**：可将实时搜索结果并入上下文（Serper / DuckDuckGo）
+  -. 🧩 **模型可选**：设置里卡片式选择 DeepSeek / Qwen 等兼容模型
+  -. 🔎 **联网搜索（可选）**：可将实时搜索结果并入上下文（Serper / DuckDuckGo）
 
 ## 🏗️ 架构
 
@@ -45,13 +45,12 @@
 - Conda (推荐，用于 FAISS)
 
 ### 1. 安装依赖
-   
-   ```bash
+
+```bash
 # 后端（推荐使用 conda 环境）
 conda create -n rag-env python=3.10 -y
 conda activate rag-env
-   pip install -r requirements.txt
-conda install -c conda-forge faiss-cpu rank-bm25 -y
+pip install -r backend/requirements.txt
 
 # 前端
 cd frontend
@@ -103,15 +102,15 @@ RAG_API_KEY=  # 可选，设置后需请求头 X-API-Key
 mkdir -p data/docs
 echo "你的知识库内容" > data/docs/sample.txt
 
-# 构建索引
-python ingest.py --docs_dir data/docs --index_dir data/index
+# 构建索引（从项目根目录运行）
+python -m backend.ingest --docs_dir data/docs --index_dir data/index
 ```
 
 ### 4. 启动服务
 
 ```bash
-# 后端（终端 1）
-uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+# 后端（终端 1，从项目根目录运行）
+python -m uvicorn backend.server:app --host 0.0.0.0 --port 8000 --reload
 
 # 前端（终端 2）
 cd frontend
