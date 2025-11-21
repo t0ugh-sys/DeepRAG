@@ -79,5 +79,9 @@ jobs:
     
     - name: Build backend image
       run: |
-        docker build -t rag-backend:latest -f backend/Dockerfile backend/
+        docker build -t rag-backend:latest -f deploy/Dockerfile.backend .
+    
+    - name: Build frontend image
+      run: |
+        docker build -t rag-frontend:latest -f deploy/Dockerfile.frontend .
 
