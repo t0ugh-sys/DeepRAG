@@ -4,6 +4,7 @@ services:
   # Milvus 依赖：etcd
   etcd:
     image: quay.io/coreos/etcd:v3.5.5
+    container_name: deeprag-etcd
     environment:
       - ETCD_AUTO_COMPACTION_MODE=revision
       - ETCD_AUTO_COMPACTION_RETENTION=1000
@@ -12,10 +13,13 @@ services:
     volumes:
       - etcd_data:/etcd
     command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    networks:
+      - deeprag-network
 
   # Milvus 依赖：MinIO
   minio:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: deeprag-minio
     environment:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
@@ -27,10 +31,13 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
+    networks:
+      - deeprag-network
 
   # Milvus standalone
   milvus:
     image: milvusdb/milvus:v2.3.3
+    container_name: deeprag-milvus
     command: ["milvus", "run", "standalone"]
     environment:
       ETCD_ENDPOINTS: etcd:2379
@@ -43,28 +50,65 @@ services:
     depends_on:
       - etcd
       - minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+    networks:
+      - deeprag-network
 
   # RAG 后端
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    container_name: deeprag-backend
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - ../.env
     environment:
       - MILVUS_HOST=milvus
       - MILVUS_PORT=19530
       - VECTOR_BACKEND=milvus
     volumes:
-      - ./data:/app/data
+      - ../data:/app/data
+      - ../backend:/app/backend
     depends_on:
-      - milvus
+      milvus:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - deeprag-network
+
+  # 前端（可选）
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+    container_name: deeprag-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - deeprag-network
 
 volumes:
   etcd_data:
+    driver: local
   minio_data:
+    driver: local
   milvus_data:
+    driver: local
 
+networks:
+  deeprag-network:
+    driver: bridge

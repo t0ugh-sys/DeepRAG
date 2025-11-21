@@ -169,14 +169,50 @@ npm run dev  # 访问 http://localhost:5173
 
 ## 🐳 Docker 部署
 
-```bash
-# 构建并启动（包含 Milvus）
-docker-compose up -d
+### 快速开始
 
-# 仅后端
-docker build -t rag-backend .
-docker run -p 8000:8000 --env-file .env rag-backend
+```bash
+# 1. 进入部署目录
+cd deploy
+
+# 2. 复制环境变量模板
+cp .env.example ../.env
+
+# 3. 编辑 .env 文件，填入你的 API Key
+vim ../.env
+
+# 4. 一键启动（推荐）
+./start.sh
+
+# 或手动启动
+docker-compose up -d
 ```
+
+### 服务访问
+
+- **前端界面**: http://localhost:5173
+- **后端 API**: http://localhost:8000
+- **API 文档**: http://localhost:8000/docs
+
+### 常用命令
+
+```bash
+# 查看服务状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f backend
+
+# 停止服务
+./stop.sh
+# 或
+docker-compose down
+
+# 重启服务
+docker-compose restart
+```
+
+详细部署文档请查看 [deploy/README.md](deploy/README.md)
 
 ## 📖 使用示例
 
