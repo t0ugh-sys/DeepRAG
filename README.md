@@ -177,6 +177,10 @@ npm run dev  # 访问 http://localhost:5173
 - `POST /namespaces/create` - 创建命名空间
 - `GET /healthz` - 健康检查
 - `GET /cache/stats` - 缓存统计
+- `GET /cache/analyze` - 缓存性能分析
+- `POST /cache/prewarm` - 缓存预热
+- `GET /cache/smart_stats` - 智能缓存统计
+- `POST /cache/optimize` - 缓存配置优化
 
 **性能监控**
 - `GET /metrics/statistics` - 性能统计信息

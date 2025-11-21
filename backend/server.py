@@ -1483,3 +1483,153 @@ def batch_analyze_queries(
         return error_response(message=str(e))
 
 
+# ==================== 缓存优化 API ====================
+
+from backend.cache_optimizer import get_smart_cache, CachePrewarmer
+
+
+@app.get("/cache/analyze")
+def analyze_cache(x_api_key: str | None = None) -> Dict[str, Any]:
+    """分析缓存性能并提供优化建议"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        smart_cache = get_smart_cache()
+        analysis = smart_cache.analyze()
+        
+        return success_response(data=analysis)
+    
+    except Exception as e:
+        logger.error(f"缓存分析失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/cache/prewarm")
+def prewarm_cache(
+    use_hot_queries: bool = True,
+    top_n: int = 20,
+    custom_queries: Optional[List[str]] = None,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """缓存预热"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        # 定义检索函数
+        def retrieval_func(query: str):
+            return pipeline.vector_store.search(query, top_k=10)
+        
+        prewarmer = CachePrewarmer(retrieval_func)
+        results = {"prewarmed_queries": []}
+        
+        # 从热门查询预热
+        if use_hot_queries:
+            from backend.performance_monitor import get_monitor
+            monitor = get_monitor()
+            hot_queries = monitor.get_hot_queries(top_n)
+            
+            hot_result = prewarmer.prewarm_from_hot_queries(hot_queries, top_n)
+            results["hot_queries_result"] = hot_result
+            results["prewarmed_queries"].extend(hot_result["prewarmed_queries"])
+        
+        # 从自定义查询预热
+        if custom_queries:
+            custom_result = prewarmer.prewarm_from_patterns(custom_queries)
+            results["custom_queries_result"] = custom_result
+            results["prewarmed_queries"].extend(custom_result["patterns"])
+        
+        return success_response(data={
+            "total_prewarmed": len(results["prewarmed_queries"]),
+            "details": results
+        })
+    
+    except Exception as e:
+        logger.error(f"缓存预热失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.get("/cache/smart_stats")
+def get_smart_cache_stats(x_api_key: str | None = None) -> Dict[str, Any]:
+    """获取智能缓存统计"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        smart_cache = get_smart_cache()
+        stats = smart_cache.get_stats()
+        
+        # 添加详细信息
+        cache_entries = []
+        for key, entry in list(smart_cache.cache.items())[:10]:  # 只返回前 10 个
+            cache_entries.append({
+                "key": key[:16] + "...",  # 截断显示
+                "hits": entry.hits,
+                "size_bytes": entry.size_bytes,
+                "age_seconds": int(time.time() - entry.created_at),
+                "ttl": entry.ttl
+            })
+        
+        return success_response(data={
+            "stats": stats,
+            "top_entries": cache_entries
+        })
+    
+    except Exception as e:
+        logger.error(f"获取缓存统计失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/cache/optimize")
+def optimize_cache_config(x_api_key: str | None = None) -> Dict[str, Any]:
+    """优化缓存配置"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        smart_cache = get_smart_cache()
+        analysis = smart_cache.analyze()
+        
+        # 根据分析结果调整配置
+        hit_rate = analysis["hit_rate"]
+        current_size = analysis["stats"]["size"]
+        max_size = analysis["stats"]["max_size"]
+        
+        recommendations = {
+            "current_config": {
+                "max_size": max_size,
+                "hit_rate": hit_rate
+            },
+            "recommended_config": {},
+            "actions": []
+        }
+        
+        # 命中率低，建议增加容量
+        if hit_rate < 0.3:
+            new_max_size = int(max_size * 1.5)
+            recommendations["recommended_config"]["max_size"] = new_max_size
+            recommendations["actions"].append(f"增加缓存容量到 {new_max_size}")
+        
+        # 空间利用率高，建议增加容量
+        utilization = current_size / max_size if max_size > 0 else 0
+        if utilization > 0.9:
+            new_max_size = int(max_size * 1.3)
+            recommendations["recommended_config"]["max_size"] = new_max_size
+            recommendations["actions"].append(f"增加缓存容量到 {new_max_size}")
+        
+        # 空间利用率低，建议减少容量
+        if utilization < 0.2 and max_size > 100:
+            new_max_size = max(100, int(max_size * 0.7))
+            recommendations["recommended_config"]["max_size"] = new_max_size
+            recommendations["actions"].append(f"减少缓存容量到 {new_max_size}")
+        
+        if not recommendations["actions"]:
+            recommendations["actions"].append("当前配置良好，无需调整")
+        
+        return success_response(data={
+            "analysis": analysis,
+            "recommendations": recommendations
+        })
+    
+    except Exception as e:
+        logger.error(f"缓存优化失败: {e}")
+        return error_response(message=str(e))
+
+
