@@ -16,6 +16,7 @@ from backend.utils.logger import logger
 from backend.utils.middleware import RequestLoggingMiddleware
 from backend.utils.responses import success_response, error_response
 from backend.utils.cache import query_cache
+from backend.performance_monitor import get_monitor, RequestTimer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -956,5 +957,77 @@ def add_message_to_conversation(
     if not conversation:
         return JSONResponse({"ok": False, "error": "对话不存在"}, status_code=404)
     return JSONResponse({"ok": True, "conversation": conversation.to_dict()})
+
+
+# ==================== 性能监控 API ====================
+
+@app.get("/metrics/statistics")
+def get_performance_statistics(x_api_key: str | None = None) -> Dict[str, Any]:
+    """获取性能统计信息"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    monitor = get_monitor()
+    
+    return success_response(data={
+        "overall": monitor.get_statistics(),
+        "endpoints": monitor.get_endpoint_statistics(),
+        "performance_breakdown": monitor.get_performance_breakdown()
+    })
+
+
+@app.get("/metrics/hot_queries")
+def get_hot_queries(top_n: int = 10, x_api_key: str | None = None) -> Dict[str, Any]:
+    """获取热门查询"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    monitor = get_monitor()
+    
+    return success_response(data={
+        "hot_queries": monitor.get_hot_queries(top_n)
+    })
+
+
+@app.get("/metrics/recent_requests")
+def get_recent_requests(limit: int = 50, x_api_key: str | None = None) -> Dict[str, Any]:
+    """获取最近的请求记录"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    monitor = get_monitor()
+    
+    return success_response(data={
+        "recent_requests": monitor.get_recent_requests(limit)
+    })
+
+
+@app.get("/metrics/time_series")
+def get_time_series(interval_seconds: int = 60, x_api_key: str | None = None) -> Dict[str, Any]:
+    """获取时间序列数据"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    monitor = get_monitor()
+    
+    return success_response(data={
+        "time_series": monitor.get_time_series(interval_seconds)
+    })
+
+
+@app.post("/metrics/export")
+def export_metrics(filepath: str = "data/metrics/export.json", x_api_key: str | None = None) -> Dict[str, Any]:
+    """导出性能指标到文件"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    monitor = get_monitor()
+    
+    try:
+        monitor.export_metrics(filepath)
+        return success_response(data={"filepath": filepath, "message": "指标已导出"})
+    except Exception as e:
+        logger.error(f"导出指标失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/metrics/clear")
+def clear_metrics(x_api_key: str | None = None) -> Dict[str, Any]:
+    """清空性能监控数据"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    monitor = get_monitor()
+    monitor.clear_history()
+    
+    return success_response(data={"message": "监控数据已清空"})
 
 

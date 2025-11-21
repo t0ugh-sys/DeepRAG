@@ -170,6 +170,14 @@ npm run dev  # 访问 http://localhost:5173
 - `GET /healthz` - 健康检查
 - `GET /cache/stats` - 缓存统计
 
+**性能监控**
+- `GET /metrics/statistics` - 性能统计信息
+- `GET /metrics/hot_queries` - 热门查询排行
+- `GET /metrics/recent_requests` - 最近请求记录
+- `GET /metrics/time_series` - 时间序列数据
+- `POST /metrics/export` - 导出性能指标
+- `POST /metrics/clear` - 清空监控数据
+
 ## 🐳 Docker 部署
 
 ### 快速开始
