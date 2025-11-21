@@ -192,6 +192,11 @@ npm run dev  # 访问 http://localhost:5173
 - `POST /retrieval/grid_search` - 网格搜索最佳权重组合
 - `POST /retrieval/compare_strategies` - 比较不同检索策略效果
 
+**查询意图识别**
+- `POST /query/analyze_intent` - 分析查询意图并提供优化建议
+- `POST /query/smart_search` - 基于意图识别的智能检索
+- `POST /query/batch_analyze` - 批量分析查询意图
+
 ## 🐳 Docker 部署
 
 ### 快速开始

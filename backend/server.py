@@ -1358,3 +1358,128 @@ def compare_retrieval_strategies(
         return error_response(message=str(e))
 
 
+# ==================== 查询意图识别 API ====================
+
+from backend.query_intent import get_query_analyzer, IntentRecognizer
+
+
+@app.post("/query/analyze_intent")
+def analyze_query_intent(
+    question: str,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """分析查询意图并提供优化建议"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        analyzer = get_query_analyzer()
+        analysis = analyzer.analyze(question)
+        
+        return success_response(data=analysis)
+    
+    except Exception as e:
+        logger.error(f"意图分析失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/query/smart_search")
+def smart_search_with_intent(
+    question: str,
+    top_k: Optional[int] = None,
+    use_recommended_config: bool = True,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """基于意图识别的智能检索"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        # 分析查询意图
+        analyzer = get_query_analyzer()
+        analysis = analyzer.analyze(question)
+        
+        # 获取推荐配置
+        config = analysis["recommended_config"]
+        
+        if use_recommended_config:
+            # 使用推荐的配置
+            actual_top_k = top_k or config["top_k"]
+            
+            # 临时修改配置
+            old_vec = settings.rag_vec_weight
+            old_bm25 = settings.rag_bm25_weight
+            
+            settings.rag_vec_weight = config["vector_weight"]
+            settings.rag_bm25_weight = config["bm25_weight"]
+            
+            # 执行检索
+            results = pipeline.vector_store.search(question, top_k=actual_top_k)
+            
+            # 恢复配置
+            settings.rag_vec_weight = old_vec
+            settings.rag_bm25_weight = old_bm25
+        else:
+            # 使用默认配置
+            actual_top_k = top_k or 10
+            results = pipeline.vector_store.search(question, top_k=actual_top_k)
+        
+        # 转换结果
+        results_dict = [
+            {
+                "text": r.text,
+                "score": r.score,
+                "meta": r.meta
+            }
+            for r in results
+        ]
+        
+        return success_response(data={
+            "query": question,
+            "intent": analysis["intent"],
+            "used_config": config if use_recommended_config else "default",
+            "results": results_dict,
+            "suggestions": analysis["suggestions"]
+        })
+    
+    except Exception as e:
+        logger.error(f"智能检索失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/query/batch_analyze")
+def batch_analyze_queries(
+    questions: List[str],
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """批量分析查询意图"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        analyzer = get_query_analyzer()
+        results = []
+        
+        for question in questions:
+            analysis = analyzer.analyze(question)
+            results.append({
+                "query": question,
+                "intent_type": analysis["intent"]["type"],
+                "confidence": analysis["intent"]["confidence"],
+                "recommended_strategy": analysis["recommended_config"]["rewrite_strategy"]
+            })
+        
+        # 统计意图分布
+        intent_distribution = {}
+        for result in results:
+            intent_type = result["intent_type"]
+            intent_distribution[intent_type] = intent_distribution.get(intent_type, 0) + 1
+        
+        return success_response(data={
+            "total_queries": len(questions),
+            "analyses": results,
+            "intent_distribution": intent_distribution
+        })
+    
+    except Exception as e:
+        logger.error(f"批量分析失败: {e}")
+        return error_response(message=str(e))
+
+
