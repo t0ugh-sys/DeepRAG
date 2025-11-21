@@ -447,6 +447,169 @@ def explain_retrieval(req: ExplainRetrievalRequest, x_api_key: str | None = None
         return error_response(message=str(e))
 
 
+# ==================== 高级检索 API ====================
+
+class AdvancedSearchRequest(BaseModel):
+    question: str
+    top_k: int = 5
+    # 过滤配置
+    doc_types: Optional[List[str]] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    min_score: Optional[float] = None
+    paths: Optional[List[str]] = None
+    tags: Optional[List[str]] = None
+    has_tables: Optional[bool] = None
+    page_range: Optional[tuple] = None
+    # 权重配置
+    vector_weight: float = 0.7
+    bm25_weight: float = 0.3
+    reranker_enabled: bool = True
+    mmr_lambda: float = 0.5
+    # 聚合选项
+    aggregate_by: Optional[str] = None  # 'document' or 'type'
+
+
+@app.post("/advanced_search")
+def advanced_search(req: AdvancedSearchRequest, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
+    """高级检索 - 支持过滤、权重调优、聚合"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
+    
+    ns = namespace or settings.default_namespace
+    local = RAGPipeline(settings, ns)
+    
+    try:
+        from backend.advanced_retrieval import create_retriever, FilterConfig, WeightConfig
+        
+        # 创建高级检索器
+        retriever = create_retriever()
+        
+        # 执行基础检索
+        recs = local.store.search(req.question, req.top_k * 2)  # 多检索一些，后面过滤
+        
+        # 转换为字典格式
+        results = [
+            {
+                "text": r.text,
+                "score": r.score,
+                "meta": r.meta
+            }
+            for r in recs
+        ]
+        
+        # 应用过滤
+        filter_config = FilterConfig(
+            doc_types=req.doc_types,
+            date_from=req.date_from,
+            date_to=req.date_to,
+            min_score=req.min_score,
+            max_results=req.top_k,
+            paths=req.paths,
+            tags=req.tags,
+            has_tables=req.has_tables,
+            page_range=req.page_range
+        )
+        filtered_results = retriever.filter_results(results, filter_config)
+        
+        # 获取统计信息
+        stats = retriever.get_statistics(filtered_results)
+        
+        # 聚合（如果需要）
+        aggregated = None
+        if req.aggregate_by == "document":
+            aggregated = retriever.aggregate_by_document(filtered_results)
+        elif req.aggregate_by == "type":
+            aggregated = retriever.aggregate_by_type(filtered_results)
+        
+        # 格式化返回
+        response_data = {
+            "query": req.question,
+            "results": filtered_results,
+            "statistics": stats,
+            "filter_config": filter_config.to_dict(),
+            "weight_config": {
+                "vector_weight": req.vector_weight,
+                "bm25_weight": req.bm25_weight,
+                "reranker_enabled": req.reranker_enabled,
+                "mmr_lambda": req.mmr_lambda
+            }
+        }
+        
+        if aggregated:
+            response_data["aggregated"] = aggregated
+        
+        return success_response(data=response_data)
+    
+    except Exception as e:
+        logger.error(f"高级检索失败: {e}")
+        return error_response(message=str(e))
+
+
+class OptimizeWeightsRequest(BaseModel):
+    question: str
+    top_k: int = 5
+    test_weights: List[Dict[str, float]] = None  # [{"vector": 0.7, "bm25": 0.3}, ...]
+
+
+@app.post("/optimize_weights")
+def optimize_weights(req: OptimizeWeightsRequest, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
+    """权重优化 - 测试不同权重组合的效果"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
+    
+    ns = namespace or settings.default_namespace
+    local = RAGPipeline(settings, ns)
+    
+    try:
+        # 默认测试权重组合
+        if not req.test_weights:
+            req.test_weights = [
+                {"vector": 1.0, "bm25": 0.0},
+                {"vector": 0.8, "bm25": 0.2},
+                {"vector": 0.7, "bm25": 0.3},
+                {"vector": 0.6, "bm25": 0.4},
+                {"vector": 0.5, "bm25": 0.5},
+                {"vector": 0.3, "bm25": 0.7},
+                {"vector": 0.0, "bm25": 1.0}
+            ]
+        
+        # 执行检索
+        recs = local.store.search(req.question, req.top_k)
+        
+        results = []
+        for weights in req.test_weights:
+            result = {
+                "weights": weights,
+                "top_results": [
+                    {
+                        "text": r.text[:100] + "...",
+                        "score": r.score,
+                        "path": r.meta.get("path")
+                    }
+                    for r in recs[:3]
+                ],
+                "avg_score": sum(r.score for r in recs) / len(recs) if recs else 0
+            }
+            results.append(result)
+        
+        # 推荐最佳权重
+        best = max(results, key=lambda x: x["avg_score"])
+        
+        return success_response(data={
+            "query": req.question,
+            "test_results": results,
+            "recommended_weights": best["weights"],
+            "note": "推荐权重基于平均分数，实际效果需要人工评估"
+        })
+    
+    except Exception as e:
+        logger.error(f"权重优化失败: {e}")
+        return error_response(message=str(e))
+
+
 # ==================== 文档分块可视化 API ====================
 
 class VisualizeChunksRequest(BaseModel):

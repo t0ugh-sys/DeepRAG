@@ -141,10 +141,13 @@ npm run dev  # 访问 http://localhost:5173
 ### 主要端点
 
 **问答相关**
+- `POST /ask` - 基础问答
 - `POST /ask_stream` - 流式问答（SSE）
 - `POST /ask_with_rewriting` - 使用查询改写增强检索
 - `POST /analyze_query` - 分析查询并推荐策略
 - `POST /explain_retrieval` - 解释检索结果（评分+高亮）
+- `POST /advanced_search` - 高级检索（过滤+权重+聚合）
+- `POST /optimize_weights` - 权重优化测试
 - `GET /models` - 返回可用大模型列表
 
 **文档管理**
