@@ -157,6 +157,14 @@ npm run dev  # 访问 http://localhost:5173
 - `GET /docs/preview?path=xxx` - 预览文档分块
 - `POST /visualize_chunks` - 可视化文档分块详情
 - `GET /export?path=xxx` - 导出文档分块
+- `POST /documents/metadata` - 更新文档元数据（标签/分类/描述）
+- `GET /documents/metadata/{path}` - 获取文档元数据
+- `GET /documents/list` - 列出文档（支持按分类/标签过滤）
+- `GET /documents/tags` - 获取所有标签
+- `GET /documents/categories` - 获取所有分类
+- `GET /documents/statistics` - 获取文档统计信息
+- `POST /documents/{path}/tags` - 添加文档标签
+- `DELETE /documents/{path}/tags` - 移除文档标签
 
 **对话管理**
 - `POST /conversations` - 创建新对话

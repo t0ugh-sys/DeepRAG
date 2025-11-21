@@ -1031,3 +1031,131 @@ def clear_metrics(x_api_key: str | None = None) -> Dict[str, Any]:
     return success_response(data={"message": "监控数据已清空"})
 
 
+# ==================== 文档管理增强 API ====================
+
+from backend.document_manager import get_document_manager
+
+doc_manager = get_document_manager()
+
+
+class UpdateDocumentRequest(BaseModel):
+    path: str
+    tags: Optional[List[str]] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+
+
+@app.post("/documents/metadata")
+def update_document_metadata(req: UpdateDocumentRequest, x_api_key: str | None = None) -> Dict[str, Any]:
+    """更新文档元数据"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        update_data = {}
+        if req.tags is not None:
+            update_data["tags"] = req.tags
+        if req.category is not None:
+            update_data["category"] = req.category
+        if req.description is not None:
+            update_data["description"] = req.description
+        
+        doc_manager.update_document(req.path, **update_data)
+        
+        return success_response(data={
+            "path": req.path,
+            "metadata": doc_manager.get_document(req.path)
+        })
+    except Exception as e:
+        logger.error(f"更新文档元数据失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.get("/documents/metadata/{path:path}")
+def get_document_metadata(path: str, x_api_key: str | None = None) -> Dict[str, Any]:
+    """获取文档元数据"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    metadata = doc_manager.get_document(path)
+    if not metadata:
+        return error_response(message="文档不存在", status_code=404)
+    
+    return success_response(data=metadata)
+
+
+@app.get("/documents/list")
+def list_documents_with_metadata(
+    category: Optional[str] = None,
+    tags: Optional[str] = None,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """列出文档（支持按分类和标签过滤）"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    tag_list = tags.split(",") if tags else None
+    documents = doc_manager.list_documents(category=category, tags=tag_list)
+    
+    return success_response(data={
+        "documents": documents,
+        "count": len(documents)
+    })
+
+
+@app.get("/documents/tags")
+def get_all_tags(x_api_key: str | None = None) -> Dict[str, Any]:
+    """获取所有标签"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    tags = doc_manager.metadata.get_all_tags()
+    return success_response(data={"tags": tags, "count": len(tags)})
+
+
+@app.get("/documents/categories")
+def get_all_categories(x_api_key: str | None = None) -> Dict[str, Any]:
+    """获取所有分类"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    categories = doc_manager.metadata.get_all_categories()
+    return success_response(data={"categories": categories, "count": len(categories)})
+
+
+@app.get("/documents/statistics")
+def get_document_statistics(x_api_key: str | None = None) -> Dict[str, Any]:
+    """获取文档统计信息"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    stats = doc_manager.get_statistics()
+    return success_response(data=stats)
+
+
+@app.post("/documents/{path:path}/tags")
+def add_document_tags(path: str, tags: List[str], x_api_key: str | None = None) -> Dict[str, Any]:
+    """添加文档标签"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        doc_manager.metadata.add_tags(path, tags)
+        return success_response(data={
+            "path": path,
+            "tags": doc_manager.get_document(path).get("tags", [])
+        })
+    except Exception as e:
+        logger.error(f"添加标签失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.delete("/documents/{path:path}/tags")
+def remove_document_tags(path: str, tags: List[str], x_api_key: str | None = None) -> Dict[str, Any]:
+    """移除文档标签"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        doc_manager.metadata.remove_tags(path, tags)
+        return success_response(data={
+            "path": path,
+            "tags": doc_manager.get_document(path).get("tags", [])
+        })
+    except Exception as e:
+        logger.error(f"移除标签失败: {e}")
+        return error_response(message=str(e))
+
+
