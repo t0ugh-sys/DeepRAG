@@ -186,6 +186,12 @@ npm run dev  # 访问 http://localhost:5173
 - `POST /metrics/export` - 导出性能指标
 - `POST /metrics/clear` - 清空监控数据
 
+**检索优化**
+- `POST /retrieval/analyze` - 分析检索质量并提供优化建议
+- `POST /retrieval/suggest_weights` - 根据查询类型建议最佳权重
+- `POST /retrieval/grid_search` - 网格搜索最佳权重组合
+- `POST /retrieval/compare_strategies` - 比较不同检索策略效果
+
 ## 🐳 Docker 部署
 
 ### 快速开始

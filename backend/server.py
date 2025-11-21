@@ -1159,3 +1159,202 @@ def remove_document_tags(path: str, tags: List[str], x_api_key: str | None = Non
         return error_response(message=str(e))
 
 
+# ==================== 检索优化 API ====================
+
+from backend.retrieval_optimizer import get_optimizer
+
+
+@app.post("/retrieval/analyze")
+def analyze_retrieval_quality(
+    question: str,
+    top_k: int = 10,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """分析检索质量并提供优化建议"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        # 执行检索
+        results = pipeline.vector_store.search(question, top_k=top_k)
+        
+        # 转换为字典格式
+        results_dict = [
+            {
+                "text": r.text,
+                "score": r.score,
+                "meta": r.meta
+            }
+            for r in results
+        ]
+        
+        # 分析优化
+        optimizer = get_optimizer()
+        analysis = optimizer.optimize(question, results_dict)
+        
+        return success_response(data=analysis)
+    
+    except Exception as e:
+        logger.error(f"检索分析失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/retrieval/suggest_weights")
+def suggest_optimal_weights(
+    question: str,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """根据查询类型建议最佳权重"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        optimizer = get_optimizer()
+        
+        # 自动判断权重
+        vec_weight, bm25_weight = optimizer.weight_optimizer.adaptive_weights(question)
+        
+        # 推荐改写策略
+        rewrite_strategy = optimizer.query_optimizer.suggest_rewrite_strategy(question)
+        
+        return success_response(data={
+            "question": question,
+            "recommended_weights": {
+                "vector_weight": vec_weight,
+                "bm25_weight": bm25_weight
+            },
+            "recommended_rewrite_strategy": rewrite_strategy,
+            "explanation": _get_weight_explanation(vec_weight, bm25_weight)
+        })
+    
+    except Exception as e:
+        logger.error(f"权重建议失败: {e}")
+        return error_response(message=str(e))
+
+
+def _get_weight_explanation(vec_weight: float, bm25_weight: float) -> str:
+    """解释权重选择"""
+    if vec_weight > 0.7:
+        return "查询偏语义理解，使用高向量权重"
+    elif bm25_weight > 0.6:
+        return "查询偏关键词匹配，使用高 BM25 权重"
+    else:
+        return "查询类型平衡，使用均衡权重"
+
+
+@app.post("/retrieval/grid_search")
+def grid_search_weights(
+    question: str,
+    top_k: int = 10,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """网格搜索最佳权重组合"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        optimizer = get_optimizer()
+        
+        # 定义检索函数
+        def retrieval_func(query, top_k, vector_weight, bm25_weight):
+            # 临时修改权重
+            old_vec = settings.rag_vec_weight
+            old_bm25 = settings.rag_bm25_weight
+            
+            settings.rag_vec_weight = vector_weight
+            settings.rag_bm25_weight = bm25_weight
+            
+            results = pipeline.vector_store.search(query, top_k=top_k)
+            
+            # 恢复权重
+            settings.rag_vec_weight = old_vec
+            settings.rag_bm25_weight = old_bm25
+            
+            return [{"score": r.score} for r in results]
+        
+        # 执行网格搜索
+        optimization = optimizer.weight_optimizer.grid_search(
+            retrieval_func,
+            question,
+            top_k=top_k
+        )
+        
+        return success_response(data={
+            "question": question,
+            "optimization": optimization
+        })
+    
+    except Exception as e:
+        logger.error(f"网格搜索失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/retrieval/compare_strategies")
+def compare_retrieval_strategies(
+    question: str,
+    top_k: int = 10,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """比较不同检索策略的效果"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        strategies = []
+        
+        # 策略 1: 纯向量检索
+        old_bm25 = settings.rag_bm25_enabled
+        settings.rag_bm25_enabled = False
+        results_vec = pipeline.vector_store.search(question, top_k=top_k)
+        settings.rag_bm25_enabled = old_bm25
+        
+        strategies.append({
+            "name": "纯向量检索",
+            "config": {"vector_weight": 1.0, "bm25_weight": 0.0},
+            "avg_score": round(sum(r.score for r in results_vec) / len(results_vec), 4) if results_vec else 0,
+            "result_count": len(results_vec)
+        })
+        
+        # 策略 2: 混合检索（默认权重）
+        results_hybrid = pipeline.vector_store.search(question, top_k=top_k)
+        strategies.append({
+            "name": "混合检索（默认）",
+            "config": {
+                "vector_weight": settings.rag_vec_weight,
+                "bm25_weight": settings.rag_bm25_weight
+            },
+            "avg_score": round(sum(r.score for r in results_hybrid) / len(results_hybrid), 4) if results_hybrid else 0,
+            "result_count": len(results_hybrid)
+        })
+        
+        # 策略 3: 自适应权重
+        optimizer = get_optimizer()
+        vec_w, bm25_w = optimizer.weight_optimizer.adaptive_weights(question)
+        
+        old_vec = settings.rag_vec_weight
+        old_bm25 = settings.rag_bm25_weight
+        settings.rag_vec_weight = vec_w
+        settings.rag_bm25_weight = bm25_w
+        
+        results_adaptive = pipeline.vector_store.search(question, top_k=top_k)
+        
+        settings.rag_vec_weight = old_vec
+        settings.rag_bm25_weight = old_bm25
+        
+        strategies.append({
+            "name": "自适应权重",
+            "config": {"vector_weight": vec_w, "bm25_weight": bm25_w},
+            "avg_score": round(sum(r.score for r in results_adaptive) / len(results_adaptive), 4) if results_adaptive else 0,
+            "result_count": len(results_adaptive)
+        })
+        
+        # 排序
+        strategies.sort(key=lambda x: x["avg_score"], reverse=True)
+        
+        return success_response(data={
+            "question": question,
+            "strategies": strategies,
+            "best_strategy": strategies[0]["name"]
+        })
+    
+    except Exception as e:
+        logger.error(f"策略比较失败: {e}")
+        return error_response(message=str(e))
+
+
