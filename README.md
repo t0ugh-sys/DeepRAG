@@ -208,6 +208,17 @@ npm run dev  # 访问 http://localhost:5173
 - `POST /evaluation/save_test_cases` - 保存测试用例
 - `GET /evaluation/load_test_cases` - 加载测试用例
 
+**知识图谱**
+- `POST /kg/build` - 构建知识图谱
+- `GET /kg/statistics` - 获取图谱统计信息
+- `GET /kg/entity/{name}` - 获取实体信息
+- `GET /kg/subgraph/{name}` - 获取实体子图
+- `GET /kg/search` - 搜索实体
+- `GET /kg/path` - 查找实体路径
+- `POST /kg/enhanced_search` - 图谱增强检索
+- `POST /kg/export` - 导出知识图谱
+- `POST /kg/import` - 导入知识图谱
+
 ## 🐳 Docker 部署
 
 ### 快速开始

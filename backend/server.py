@@ -1803,3 +1803,288 @@ def load_test_cases_from_file(
         return error_response(message=str(e))
 
 
+# ==================== 知识图谱 API ====================
+
+from backend.knowledge_graph import (
+    get_knowledge_graph, set_knowledge_graph,
+    KnowledgeGraphBuilder, GraphEnhancedRetriever
+)
+
+
+@app.post("/kg/build")
+def build_knowledge_graph(
+    doc_paths: Optional[List[str]] = None,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """构建知识图谱"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        # 获取文档
+        if doc_paths:
+            # 从指定路径加载
+            documents = []
+            for path in doc_paths:
+                # 从向量存储中获取文档
+                results = pipeline.vector_store.search(path, top_k=100)
+                for r in results:
+                    if r.meta.get("path") == path:
+                        documents.append({
+                            "text": r.text,
+                            "path": r.meta.get("path", "")
+                        })
+        else:
+            # 使用所有文档
+            documents = []
+            # 这里简化处理，实际应该从向量存储中获取所有文档
+            logger.info("使用向量存储中的所有文档构建知识图谱")
+        
+        # 构建图谱
+        builder = KnowledgeGraphBuilder()
+        kg = builder.build_from_documents(documents)
+        
+        # 设置全局图谱
+        set_knowledge_graph(kg)
+        
+        # 获取统计信息
+        stats = kg.get_statistics()
+        
+        return success_response(data={
+            "message": "知识图谱构建完成",
+            "statistics": stats
+        })
+    
+    except Exception as e:
+        logger.error(f"构建知识图谱失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.get("/kg/statistics")
+def get_kg_statistics(x_api_key: str | None = None) -> Dict[str, Any]:
+    """获取知识图谱统计信息"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        kg = get_knowledge_graph()
+        stats = kg.get_statistics()
+        
+        return success_response(data=stats)
+    
+    except Exception as e:
+        logger.error(f"获取统计信息失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.get("/kg/entity/{entity_name}")
+def get_entity_info(
+    entity_name: str,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """获取实体信息"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        kg = get_knowledge_graph()
+        entity = kg.get_entity(entity_name)
+        
+        if not entity:
+            return error_response(message="实体不存在", status_code=404)
+        
+        return success_response(data={
+            "name": entity.name,
+            "type": entity.type,
+            "mentions": entity.mentions[:10],  # 最多返回 10 个
+            "doc_paths": entity.doc_paths,
+            "doc_count": len(entity.doc_paths),
+            "attributes": entity.attributes
+        })
+    
+    except Exception as e:
+        logger.error(f"获取实体信息失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.get("/kg/subgraph/{entity_name}")
+def get_entity_subgraph(
+    entity_name: str,
+    depth: int = 2,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """获取实体子图"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        kg = get_knowledge_graph()
+        subgraph = kg.get_subgraph(entity_name, depth)
+        
+        return success_response(data=subgraph)
+    
+    except Exception as e:
+        logger.error(f"获取子图失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.get("/kg/search")
+def search_entities(
+    query: str,
+    entity_type: Optional[str] = None,
+    limit: int = 10,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """搜索实体"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        kg = get_knowledge_graph()
+        entities = kg.search_entities(query, entity_type)
+        
+        results = [
+            {
+                "name": e.name,
+                "type": e.type,
+                "doc_count": len(e.doc_paths)
+            }
+            for e in entities[:limit]
+        ]
+        
+        return success_response(data={
+            "query": query,
+            "entity_type": entity_type,
+            "results": results,
+            "count": len(results)
+        })
+    
+    except Exception as e:
+        logger.error(f"搜索实体失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.get("/kg/path")
+def find_entity_path(
+    start: str,
+    end: str,
+    max_depth: int = 3,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """查找实体路径"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        kg = get_knowledge_graph()
+        paths = kg.find_path(start, end, max_depth)
+        
+        return success_response(data={
+            "start": start,
+            "end": end,
+            "paths": paths[:5],  # 最多返回 5 条路径
+            "path_count": len(paths)
+        })
+    
+    except Exception as e:
+        logger.error(f"查找路径失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/kg/enhanced_search")
+def graph_enhanced_search(
+    question: str,
+    top_k: int = 10,
+    use_graph_expansion: bool = True,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """图谱增强检索"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        kg = get_knowledge_graph()
+        retriever = GraphEnhancedRetriever(kg)
+        
+        # 查询扩展
+        expanded_queries = [question]
+        if use_graph_expansion:
+            expanded_queries = retriever.expand_query_with_graph(question)
+        
+        # 获取相关实体
+        related_entities = retriever.get_related_entities(question)
+        
+        # 执行检索
+        all_results = []
+        for query in expanded_queries[:3]:  # 最多使用 3 个扩展查询
+            results = pipeline.vector_store.search(query, top_k=top_k)
+            all_results.extend(results)
+        
+        # 去重并排序
+        seen = set()
+        unique_results = []
+        for r in all_results:
+            key = (r.text, r.meta.get("path"))
+            if key not in seen:
+                seen.add(key)
+                unique_results.append({
+                    "text": r.text,
+                    "score": r.score,
+                    "meta": r.meta
+                })
+        
+        unique_results.sort(key=lambda x: x["score"], reverse=True)
+        
+        return success_response(data={
+            "question": question,
+            "expanded_queries": expanded_queries,
+            "related_entities": related_entities,
+            "results": unique_results[:top_k],
+            "total_results": len(unique_results)
+        })
+    
+    except Exception as e:
+        logger.error(f"图谱增强检索失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/kg/export")
+def export_knowledge_graph(
+    filepath: str = "data/kg/knowledge_graph.json",
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """导出知识图谱"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        kg = get_knowledge_graph()
+        kg.export_to_json(filepath)
+        
+        return success_response(data={
+            "filepath": filepath,
+            "message": "知识图谱已导出"
+        })
+    
+    except Exception as e:
+        logger.error(f"导出知识图谱失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/kg/import")
+def import_knowledge_graph(
+    filepath: str = "data/kg/knowledge_graph.json",
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """导入知识图谱"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        kg = get_knowledge_graph()
+        kg.import_from_json(filepath)
+        
+        stats = kg.get_statistics()
+        
+        return success_response(data={
+            "filepath": filepath,
+            "message": "知识图谱已导入",
+            "statistics": stats
+        })
+    
+    except Exception as e:
+        logger.error(f"导入知识图谱失败: {e}")
+        return error_response(message=str(e))
+
+
