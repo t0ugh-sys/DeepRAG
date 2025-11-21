@@ -1633,3 +1633,173 @@ def optimize_cache_config(x_api_key: str | None = None) -> Dict[str, Any]:
         return error_response(message=str(e))
 
 
+# ==================== 评估测试 API ====================
+
+from backend.evaluation import get_evaluator, TestCase, TestCaseGenerator, BenchmarkReport
+
+
+@app.post("/evaluation/run_benchmark")
+def run_benchmark_test(
+    test_cases: Optional[List[Dict[str, Any]]] = None,
+    use_default_tests: bool = False,
+    top_k: int = 10,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """运行基准测试"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        evaluator = get_evaluator(pipeline)
+        
+        # 准备测试用例
+        if use_default_tests:
+            cases = TestCaseGenerator.generate_basic_tests()
+        elif test_cases:
+            cases = [
+                TestCase(
+                    question=tc["question"],
+                    expected_answer=tc.get("expected_answer"),
+                    expected_keywords=tc.get("expected_keywords"),
+                    expected_doc_paths=tc.get("expected_doc_paths"),
+                    category=tc.get("category", "general")
+                )
+                for tc in test_cases
+            ]
+        else:
+            return error_response(message="请提供测试用例或使用默认测试")
+        
+        # 运行评估
+        results = evaluator.run_benchmark(cases, top_k=top_k)
+        
+        # 生成报告
+        report = BenchmarkReport.generate_report(results)
+        
+        return success_response(data={
+            "results": results,
+            "report": report
+        })
+    
+    except Exception as e:
+        logger.error(f"基准测试失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/evaluation/test_retrieval")
+def test_retrieval_quality(
+    question: str,
+    expected_doc_paths: List[str],
+    top_k: int = 10,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """测试单个查询的检索质量"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        evaluator = get_evaluator(pipeline)
+        
+        test_case = TestCase(
+            question=question,
+            expected_doc_paths=expected_doc_paths
+        )
+        
+        results = evaluator.evaluate_retrieval([test_case], top_k=top_k)
+        
+        return success_response(data=results)
+    
+    except Exception as e:
+        logger.error(f"检索测试失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/evaluation/test_answer")
+def test_answer_quality(
+    question: str,
+    expected_keywords: Optional[List[str]] = None,
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """测试单个查询的答案质量"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        evaluator = get_evaluator(pipeline)
+        
+        test_case = TestCase(
+            question=question,
+            expected_keywords=expected_keywords
+        )
+        
+        results = evaluator.evaluate_answer_quality([test_case])
+        
+        return success_response(data=results)
+    
+    except Exception as e:
+        logger.error(f"答案测试失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.post("/evaluation/save_test_cases")
+def save_test_cases_to_file(
+    test_cases: List[Dict[str, Any]],
+    filepath: str = "data/evaluation/test_cases.json",
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """保存测试用例到文件"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        cases = [
+            TestCase(
+                question=tc["question"],
+                expected_answer=tc.get("expected_answer"),
+                expected_keywords=tc.get("expected_keywords"),
+                expected_doc_paths=tc.get("expected_doc_paths"),
+                category=tc.get("category", "general")
+            )
+            for tc in test_cases
+        ]
+        
+        TestCaseGenerator.save_to_file(cases, filepath)
+        
+        return success_response(data={
+            "filepath": filepath,
+            "count": len(cases),
+            "message": "测试用例已保存"
+        })
+    
+    except Exception as e:
+        logger.error(f"保存测试用例失败: {e}")
+        return error_response(message=str(e))
+
+
+@app.get("/evaluation/load_test_cases")
+def load_test_cases_from_file(
+    filepath: str = "data/evaluation/test_cases.json",
+    x_api_key: str | None = None
+) -> Dict[str, Any]:
+    """从文件加载测试用例"""
+    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    
+    try:
+        cases = TestCaseGenerator.load_from_file(filepath)
+        
+        cases_dict = [
+            {
+                "question": tc.question,
+                "expected_answer": tc.expected_answer,
+                "expected_keywords": tc.expected_keywords,
+                "expected_doc_paths": tc.expected_doc_paths,
+                "category": tc.category
+            }
+            for tc in cases
+        ]
+        
+        return success_response(data={
+            "test_cases": cases_dict,
+            "count": len(cases)
+        })
+    
+    except Exception as e:
+        logger.error(f"加载测试用例失败: {e}")
+        return error_response(message=str(e))
+
+

@@ -201,6 +201,13 @@ npm run dev  # 访问 http://localhost:5173
 - `POST /query/smart_search` - 基于意图识别的智能检索
 - `POST /query/batch_analyze` - 批量分析查询意图
 
+**评估测试**
+- `POST /evaluation/run_benchmark` - 运行基准测试
+- `POST /evaluation/test_retrieval` - 测试检索质量
+- `POST /evaluation/test_answer` - 测试答案质量
+- `POST /evaluation/save_test_cases` - 保存测试用例
+- `GET /evaluation/load_test_cases` - 加载测试用例
+
 ## 🐳 Docker 部署
 
 ### 快速开始
