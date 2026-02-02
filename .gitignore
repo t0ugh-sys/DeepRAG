@@ -24,7 +24,7 @@ Thumbs.db
 # Data & Index
 data/index/
 data/conversations/
-# 可根据需要决定是否忽略原始文档：默认不忽略 docs，便于示例
+# 可根据需要决定是否忽略原始文档：默认不忽�?docs，便于示�?
 # data/docs/
 
 # Logs
@@ -36,3 +36,4 @@ logs/
 htmlcov/
 .tox/
 
+AGENTS.md
