@@ -1,4 +1,4 @@
-﻿# ?? DeepRAG - 企业级 RAG 知识库系统
+﻿# DeepRAG - 企业级 RAG 知识库系统
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-green.svg)](https://fastapi.tiangolo.com/)
@@ -7,35 +7,35 @@
 
 基于 FastAPI + Vue 3 的前后端分离 RAG（检索增强生成）系统，支持 Milvus/FAISS 向量存储、BM25 混合检索、Reranker 重排，以及多租户隔离。
 
-## ? 核心特性
+## 核心特性
 
-- ?? **混合检索**：向量检索 + BM25 融合，MMR 多样性采样
-- ?? **智能重排**：可选 FlagEmbedding Reranker 提升相关性
-- ?? **查询改写**：多种策略优化检索效果
+- **混合检索**：向量检索 + BM25 融合，MMR 多样性采样
+- **智能重排**：可选 FlagEmbedding Reranker 提升相关性
+- **查询改写**：多种策略优化检索效果
   - 查询扩展 - 生成同义词和相关表达
   - 查询分解 - 将复杂查询拆分为子查询
   - HyDE - 假设性文档嵌入
   - 智能分析 - 自动推荐最佳策略
-- ?? **灵活存储**：Milvus 云原生 / FAISS 本地，自动回退
-- ?? **多租户**：命名空间隔离 + API Key 鉴权
-- ?? **深度文档理解**：
+- **灵活存储**：Milvus 云原生 / FAISS 本地，自动回退
+- **多租户**：命名空间隔离 + API Key 鉴权
+- **深度文档理解**：
   - 支持 `.txt`, `.md`, `.pdf`, `.docx`, `.xlsx`
   - PDF 表格自动提取和解析
   - OCR 图片文字识别（可选）
   - 智能分块保持语义边界
-- ?? **精确引用溯源**：记录页码信息，支持精确定位
-- ?? **多轮对话管理**：上下文感知的对话历史
-- ?? **现代前端**：Vue 3 + Vite，组件化架构，代码高亮，原生暗黑模式
-- ?? **可观测性**：结构化日志、健康检查、监控指标
-- ?? **易部署**：Docker Compose 一键启动
-- ?? **模型可选**：设置里卡片式选择 DeepSeek / Qwen 等兼容模型
-- ?? **联网搜索（可选）**：可将实时搜索结果并入上下文（Serper / DuckDuckGo）
+- **精确引用溯源**：记录页码信息，支持精确定位
+- **多轮对话管理**：上下文感知的对话历史
+- **现代前端**：Vue 3 + Vite，组件化架构，代码高亮，原生暗黑模式
+- **可观测性**：结构化日志、健康检查、监控指标
+- **易部署**：Docker Compose 一键启动
+- **模型可选**：设置里卡片式选择 DeepSeek / Qwen 等兼容模型
+- **联网搜索（可选）**：可将实时搜索结果并入上下文（Serper / DuckDuckGo）
 
-## ??? 架构
+## 架构
 
 ```
 ┌─────────────────┐         ┌──────────────────┐
-│   Vue 3 前端    │?───────?│  FastAPI 后端    │
+│   Vue 3 前端    │ ------- │  FastAPI 后端    │
 │  (Vite 5173)   │  HTTP   │   (uvicorn 8000) │
 └─────────────────┘         └──────────┬───────┘
                                        │
@@ -47,7 +47,7 @@
                  └─────────┘     └─────────┘     └─────────┘
 ```
 
-## ?? 快速开始
+## 快速开始
 
 ### 环境要求
 
@@ -132,7 +132,7 @@ cd frontend
 npm run dev  # 访问 http://localhost:5173
 ```
 
-## ?? API 文档
+## API 文档
 
 启动后访问 `http://localhost:8000/docs` 查看 Swagger 交互式文档。
 
@@ -217,7 +217,7 @@ npm run dev  # 访问 http://localhost:5173
 - `POST /kg/export` - 导出知识图谱
 - `POST /kg/import` - 导入知识图谱
 
-## ?? Docker 部署
+## Docker 部署
 
 ### 快速开始
 
@@ -264,7 +264,7 @@ docker-compose restart
 
 详细部署文档请查看 [deploy/README.md](deploy/README.md)
 
-## ?? 使用示例
+## 使用示例
 
 ### Python SDK
 
@@ -305,7 +305,7 @@ curl -X POST http://localhost:8000/ask_stream \
   }'
 ```
 
-## ??? 高级配置
+## 高级配置
 
 ### BM25 混合检索
 
@@ -335,7 +335,7 @@ MILVUS_PASSWORD=xxx
 MILVUS_SECURE=true
 ```
 
-## ?? 贡献指南
+## 贡献指南
 
 欢迎贡献！请先 Fork 本仓库，然后：
 
@@ -351,7 +351,7 @@ MILVUS_SECURE=true
 - `feature/*` - 新功能开发
 - `hotfix/*` - 紧急修复
 
-## ?? 开发路线图
+## 开发路线图
 
 - [ ] 多轮对话记忆与上下文管理
 - [ ] 评测框架（nDCG、MRR、Hit@K）
@@ -360,11 +360,11 @@ MILVUS_SECURE=true
 - [ ] Web UI 响应式适配
 - [ ] K8s Helm Chart
 
-## ?? 许可证
+## 许可证
 
 本项目采用 [MIT License](LICENSE) 开源。
 
-## ?? 致谢
+## 致谢
 
 - [FastAPI](https://fastapi.tiangolo.com/) - 现代高性能 Web 框架
 - [Milvus](https://milvus.io/) - 云原生向量数据库
@@ -379,5 +379,6 @@ MILVUS_SECURE=true
 \r\n## 注意事项\r\n\r\n- 不提交或上传以下文件：AGENTS.md。\r\n- 如需启用鉴权：设置 RAG_API_KEY_REQUIRED=true 并配置 RAG_API_KEY，客户端需在请求头携带 X-API-Key。\r\n- CORS 规则由 RAG_CORS_* 控制；当 RAG_CORS_ALLOW_ORIGINS 包含 * 时，将自动关闭 llow_credentials。\r\n- 运行/调试前先复制 .env.example 为 .env 并填写必要参数。\r\n- 避免手工修改生成目录（如 data/index）与依赖目录（如 rontend/node_modules）。\r\n- 修改功能后请执行对应测试（后端 pytest，前端如有 
 pm test/
 pm run lint）。\r\n
+
 
 
