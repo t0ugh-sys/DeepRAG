@@ -35,8 +35,8 @@
 
 ```
 ┌─────────────────┐         ┌──────────────────┐
-│   Vue 3 前端    │ ------- │  FastAPI 后端    │
-│  (Vite 5173)   │  HTTP   │   (uvicorn 8000) │
+│   Vue 3 前端     │ ------- │  FastAPI 后端     │
+│  (Vite 5173)    │  HTTP   │   (uvicorn 8000) │
 └─────────────────┘         └──────────┬───────┘
                                        │
                       ┌────────────────┼────────────────┐
@@ -373,12 +373,13 @@ MILVUS_SECURE=true
 
 ---
 
-**Star ? 本项目以支持开发者持续维护！**
+**Star 本项目以支持开发者持续维护！**
 
+## 注意事项
 
-\r\n## 注意事项\r\n\r\n- 不提交或上传以下文件：AGENTS.md。\r\n- 如需启用鉴权：设置 RAG_API_KEY_REQUIRED=true 并配置 RAG_API_KEY，客户端需在请求头携带 X-API-Key。\r\n- CORS 规则由 RAG_CORS_* 控制；当 RAG_CORS_ALLOW_ORIGINS 包含 * 时，将自动关闭 llow_credentials。\r\n- 运行/调试前先复制 .env.example 为 .env 并填写必要参数。\r\n- 避免手工修改生成目录（如 data/index）与依赖目录（如 rontend/node_modules）。\r\n- 修改功能后请执行对应测试（后端 pytest，前端如有 
-pm test/
-pm run lint）。\r\n
-
-
-
+- 不提交或上传以下文件：AGENTS.md。
+- 如需启用鉴权：设置 RAG_API_KEY_REQUIRED=true 并配置 RAG_API_KEY，客户端需在请求头携带 X-API-Key。
+- CORS 规则由 RAG_CORS_* 控制；当 RAG_CORS_ALLOW_ORIGINS 包含 * 时，将自动关闭 allow_credentials。
+- 运行/调试前先复制 .env.example 为 .env 并填写必要参数。
+- 避免手工修改生成目录（如 data/index）与依赖目录（如 frontend/node_modules）。
+- 修改功能后请执行对应测试（后端 pytest，前端如有 npm test / npm run lint）。
