@@ -7,7 +7,7 @@ const api = axios.create({
   timeout: 60000,
 });
 
-// 请求拦截器：自动带上 API Key 与 Namespace
+// 请求拦截器：自动带上 API Key �?Namespace
 api.interceptors.request.use((config) => {
   const apiKey = localStorage.getItem('apikey');
   const ns = localStorage.getItem('ns');
@@ -17,7 +17,7 @@ api.interceptors.request.use((config) => {
 });
 
 export default {
-  // 健康检查
+  // 健康检�?
   healthz: () => api.get('/healthz'),
   
   // 获取可用模型列表
@@ -44,6 +44,13 @@ export default {
   uploadDoc: (formData) => api.post('/docs', formData),
   deleteDoc: (path) => api.delete(`/docs?path=${encodeURIComponent(path)}`),
   listPaths: (limit = 1000) => api.get(`/docs/paths?limit=${limit}`),
+  listDocuments: (params = {}) => api.get(`/documents/list`, { params }),
+  listTags: () => api.get(`/documents/tags`),
+  listCategories: () => api.get(`/documents/categories`),
+  listConversations: (params = {}) => api.get(`/conversations`, { params }),
+  deleteConversation: (id) => api.delete(`/conversations/${id}`),
   exportPath: (path) => api.get(`/export?path=${encodeURIComponent(path)}`),
 };
+
+
 

@@ -73,8 +73,9 @@ class Settings:
 
     # 多租户命名空间与鉴权
     default_namespace: str = os.getenv("RAG_NAMESPACE", "default")
+    namespace_whitelist: str | None = os.getenv("RAG_NAMESPACE_WHITELIST")
+    api_key_namespace: str | None = os.getenv("RAG_API_KEY_NAMESPACE")
     api_key: str | None = os.getenv("RAG_API_KEY")
-    api_key_required: bool = False
 
     # CORS configuration
     cors_allow_origins: str = os.getenv("RAG_CORS_ALLOW_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
@@ -113,6 +114,7 @@ class Settings:
 
 def ensure_dirs(path: str) -> None:
     os.makedirs(path, exist_ok=True)
+
 
 
 

@@ -27,23 +27,23 @@ class RetrievedChunk:
 
 class VectorStore:
     """
-    向量存储抽象层，支持 Milvus 和 FAISS 双后端
+    向量存储抽象层，支持 Milvus �?FAISS 双后�?
     
-    自动尝试连接 Milvus，失败时回退到本地 FAISS 索引
+    自动尝试连接 Milvus，失败时回退到本�?FAISS 索引
     """
     
     def __init__(self, meta_path: str, embedding_model: str, settings: Settings, namespace: str | None = None) -> None:
         """
-        初始化向量存储
+        初始化向量存�?
         
         Args:
-            meta_path: 元数据文件路径 (meta.jsonl)
-            embedding_model: 向量化模型名称
+            meta_path: 元数据文件路�?(meta.jsonl)
+            embedding_model: 向量化模型名�?
             settings: 配置对象
             namespace: 命名空间
         """
         if not os.path.exists(meta_path):
-            raise FileNotFoundError("未找到 meta.jsonl，请先运行 ingest 构建索引")
+            raise FileNotFoundError("未找�?meta.jsonl，请先运�?ingest 构建索引")
         self.namespace = namespace or settings.default_namespace
         self.texts: List[str] = []
         self.metas: List[Dict[str, Any]] = []
@@ -54,11 +54,11 @@ class VectorStore:
                 self.texts.append(rec["text"]) 
                 self.metas.append(rec["meta"]) 
         self.embedder = SentenceTransformer(embedding_model)
-        # BM25 语料（按词分）
+        # BM25 语料（按词分�?
         self._bm25_tokenized = [self._tokenize(t) for t in self.texts]
         self._bm25 = BM25Okapi(self._bm25_tokenized) if self._bm25_tokenized else None
 
-        # 尝试使用 Milvus，否则回退到 FAISS
+        # 尝试使用 Milvus，否则回退�?FAISS
         self.collection = None
         self.faiss_index = None
         self.backend = "faiss"
@@ -76,27 +76,27 @@ class VectorStore:
                 self.collection = Collection(collection_name)
                 self.backend = "milvus"
             except Exception as e:
-                # Milvus 连接失败，回退到 FAISS
+                # Milvus 连接失败，回退�?FAISS
                 import logging
-                logging.getLogger("rag").debug(f"Milvus 连接失败，回退到 FAISS: {e}")
+                logging.getLogger("rag").debug(f"Milvus 连接失败，回退�?FAISS: {e}")
                 self.collection = None
                 self.backend = "faiss"
         if self.collection is None:
             faiss_path = os.path.join(os.path.dirname(meta_path), "faiss.index")
             self.faiss_path = faiss_path
             if not os.path.exists(faiss_path):
-                raise FileNotFoundError("未找到 Milvus 集合且缺少 faiss.index，请先运行 ingest 构建索引")
+                raise FileNotFoundError("未找�?Milvus 集合且缺�?faiss.index，请先运�?ingest 构建索引")
             try:
                 import faiss  # type: ignore
             except Exception as exc:  # pragma: no cover
-                raise RuntimeError("需要 FAISS 以读取本地回退索引，请使用 conda 安装 faiss-cpu: conda install -n rag-env -c conda-forge faiss-cpu") from exc
+                raise RuntimeError("需�?FAISS 以读取本地回退索引，请使用 conda 安装 faiss-cpu: conda install -n rag-env -c conda-forge faiss-cpu") from exc
             self.faiss_index = faiss.read_index(faiss_path)
 
     def _expand_query(self, query: str) -> str:
-        """查询扩展：提取关键词，生成多个查询变体"""
+        """查询扩展：提取关键词，生成多个查询变�?""
         try:
             import jieba.analyse
-            # 提取关键词（TF-IDF）
+            # 提取关键词（TF-IDF�?
             keywords = jieba.analyse.extract_tags(query, topK=5, withWeight=False)
             # 将关键词组合回原查询
             expanded = query + " " + " ".join(keywords)
@@ -123,10 +123,10 @@ class VectorStore:
             for hit in hits:
                 meta = {"path": hit.entity.get("path"), "chunk_id": int(hit.entity.get("chunk_id"))}
                 results.append(RetrievedChunk(text=hit.entity.get("text"), score=float(hit.distance), meta=meta))
-            return results
+            return _apply_score_threshold(_dedupe_results(results), self.settings.score_threshold)
         # faiss 回退
         assert self.faiss_index is not None
-        # 动态导入 faiss，避免未安装时报错
+        # 动态导�?faiss，避免未安装时报�?
         import faiss  # type: ignore
         scores, indices = self.faiss_index.search(vec.reshape(1, -1), top_k)
         for score, idx in zip(scores[0], indices[0]):
@@ -134,8 +134,8 @@ class VectorStore:
                 continue
             results.append(RetrievedChunk(text=self.texts[idx], score=float(score), meta=self.metas[idx]))
 
-        # 可选 BM25 融合
-        return self._fuse_with_bm25(query, results, top_k)
+        # 可�?BM25 融合
+        return self._fuse_with_bm25(query, _dedupe_results(results), top_k)
 
     # --- 辅助：BM25 + MMR 融合 ---
     def _tokenize(self, s: str) -> list[str]:
@@ -144,11 +144,11 @@ class VectorStore:
         try:
             import jieba
             # 使用 jieba 进行中文分词
-            words = list(jieba.cut_for_search(s.lower()))  # 搜索引擎模式，更细粒度
-            # 过滤掉空白和单字符标点
+            words = list(jieba.cut_for_search(s.lower()))  # 搜索引擎模式，更细粒�?
+            # 过滤掉空白和单字符标�?
             return [w.strip() for w in words if w.strip() and not re.match(r'^[\W_]+$', w)]
         except ImportError:
-            # 如果没有 jieba，回退到简单分词
+            # 如果没有 jieba，回退到简单分�?
             return [w for w in re.split(r"\W+", s.lower()) if w]
 
     def _fuse_with_bm25(self, query: str, vec_results: List[RetrievedChunk], top_k: int) -> List[RetrievedChunk]:
@@ -157,7 +157,7 @@ class VectorStore:
         if settings.bm25_enabled and self._bm25 is not None:
             tokens = self._tokenize(query)
             bm25_scores = self._bm25.get_scores(tokens)
-            # 归一化分数
+            # 归一化分�?
             import math
             def norm(x: float) -> float:
                 return 0.0 if math.isnan(x) else float(x)
@@ -167,12 +167,12 @@ class VectorStore:
                 bm = (bm25_scores[i] / (bm25_max or 1.0)) if i < len(bm25_scores) else 0.0
                 fused[i] = settings.vec_weight * r.score + settings.bm25_weight * norm(bm)
                 r.score = fused[i]
-            # 得分阈值过滤
+            # 得分阈值过�?
             if settings.score_threshold > 0:
                 recs = [r for r in recs if r.score >= settings.score_threshold]
             recs = sorted(recs, key=lambda x: x.score, reverse=True)
 
-        # MMR 多样性采样
+        # MMR 多样性采�?
         if len(recs) > top_k:
             recs = self._mmr(query, recs, top_k, lambda_weight=settings.mmr_lambda)
         return recs
@@ -208,7 +208,7 @@ class VectorStore:
         return [recs[i] for i in selected]
 
     def add_document(self, path: str, text: str) -> int:
-        # 支持两种后端的在线新增
+        # 支持两种后端的在线新�?
         if self.backend == "milvus" and self.collection is not None:
             chunks = split_text(text)
             if not chunks:
@@ -221,7 +221,7 @@ class VectorStore:
             self.collection.flush()
             return len(chunks)
 
-        # FAISS 本地模式：动态追加并写回索引与 meta
+        # FAISS 本地模式：动态追加并写回索引�?meta
         if self.backend == "faiss" and self.faiss_index is not None:
             chunks = split_text(text)
             if not chunks:
@@ -232,7 +232,7 @@ class VectorStore:
             self.faiss_index.add(vecs)
             # 写回索引文件
             faiss.write_index(self.faiss_index, getattr(self, "faiss_path", os.path.join(os.path.dirname(self.meta_path), "faiss.index")))
-            # 追加 meta.jsonl 与内存映射
+            # 追加 meta.jsonl 与内存映�?
             with open(self.meta_path, "a", encoding="utf-8") as f:
                 for idx, chunk in enumerate(chunks):
                     meta = {"path": path, "chunk_id": idx, "chunk_size": len(chunk)}
@@ -258,7 +258,7 @@ class VectorStore:
                 cnt = 0
             return cnt
 
-        # FAISS 本地删除：过滤 meta.jsonl，并重建索引
+        # FAISS 本地删除：过�?meta.jsonl，并重建索引
         if self.backend == "faiss" and self.faiss_index is not None:
             # 过滤内存中的文本与元数据
             remain_texts: List[str] = []
@@ -276,7 +276,7 @@ class VectorStore:
                 for m, t in zip(remain_metas, remain_texts):
                     f.write(json.dumps({"meta": m, "text": t}, ensure_ascii=False) + "\n")
 
-            # 重新编码剩余文本并重建 faiss 索引
+            # 重新编码剩余文本并重�?faiss 索引
             if remain_texts:
                 import faiss  # type: ignore
                 vecs = self.embedder.encode(remain_texts, normalize_embeddings=True)
@@ -316,7 +316,7 @@ class VectorStore:
                 if len(paths) >= limit:
                     break
             return paths
-        # 从本地 meta 去重
+        # 从本�?meta 去重
         seen = set()
         paths: List[str] = []
         for m in self.metas:
@@ -329,7 +329,7 @@ class VectorStore:
         return paths
     
     def list_paths_with_stats(self, limit: int = 1000) -> List[dict]:
-        """返回文档路径及其统计信息（分片数、最后更新时间等）"""
+        """返回文档路径及其统计信息（分片数、最后更新时间等�?""
         from collections import Counter
         from datetime import datetime
         
@@ -346,7 +346,7 @@ class VectorStore:
                 result.append({
                     "path": path,
                     "chunk_count": chunk_count,
-                    "last_updated": datetime.now().isoformat()  # Milvus 暂不支持时间戳
+                    "last_updated": datetime.now().isoformat()  # Milvus 暂不支持时间�?
                 })
             return result
         
@@ -364,15 +364,15 @@ class VectorStore:
 
 def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: bool = True, custom_system_prompt: str | None = None) -> str:
     """
-    构建 RAG 提示词
+    构建 RAG 提示�?
     
     Args:
         question: 用户问题
         contexts: 检索到的上下文片段
         strict_mode: 严格模式。True=仅基于知识库回答；False=允许模型自由发挥
-        custom_system_prompt: 自定义系统提示词，会替换{context}和{question}占位符
+        custom_system_prompt: 自定义系统提示词，会替换{context}和{question}占位�?
     """
-    # 检查是否有有效的上下文（分数阈值或为空）
+    # 检查是否有有效的上下文（分数阈值或为空�?
     has_valid_context = len(contexts) > 0 and any(c.score > 0.1 for c in contexts)
     
     if not has_valid_context and strict_mode:
@@ -392,13 +392,13 @@ def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: boo
     context_blocks = []
     for i, c in enumerate(contexts, start=1):
         path = c.meta.get("path", "")
-        # 提取文件名而非完整路径，更简洁
+        # 提取文件名而非完整路径，更简�?
         filename = path.split('/')[-1] if '/' in path else path.split('\\')[-1] if '\\' in path else path
-        score = f"相关度: {c.score:.2f}"
+        score = f"相关�? {c.score:.2f}"
         context_blocks.append(f"[文档{i}: {filename}]\n{c.text}")
     context_text = "\n\n".join(context_blocks)
     
-    # 如果有自定义提示词，使用它并替换占位符；若缺少占位符则自动补全
+    # 如果有自定义提示词，使用它并替换占位符；若缺少占位符则自动补�?
     if custom_system_prompt:
         tpl = custom_system_prompt
         includes_context = "{context}" in tpl
@@ -415,13 +415,13 @@ def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: boo
             )
         return prompt
     
-    # 否则使用默认提示词
+    # 否则使用默认提示�?
     if strict_mode:
         system_instruction = (
             "你是一个专业的知识库检索助手。\n\n"
             "**核心规则**：\n"
             "1. 仔细阅读下列所有文档片段，全面理解其内容\n"
-            "2. 从文档中寻找与问题相关的**所有信息**，包括直接和间接相关的内容\n"
+            "2. 从文档中寻找与问题相关的**所有信�?*，包括直接和间接相关的内容\n"
             "3. 综合多个文档片段的信息进行回答\n"
             "4. 如果文档中确实没有答案，明确告知用户\n"
             "5. 回答要详细、具体，尽可能引用原文\n\n"
@@ -431,7 +431,7 @@ def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: boo
             "3. 使用标题、列表等 Markdown 格式提高可读性\n"
             "4. 数字和英文前后加空格（例如：YOLOv8 的结构）\n"
             "5. 避免句子过长，适当断句\n\n"
-            "**注意**：即使某个文档片段看起来相关度不高，也要仔细检查是否包含有用信息。"
+            "**注意**：即使某个文档片段看起来相关度不高，也要仔细检查是否包含有用信息�?
         )
     else:
         system_instruction = (
@@ -449,21 +449,21 @@ def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: boo
         f"{context_text}\n"
         f"{'='*60}\n\n"
         f"用户问题：{question}\n\n"
-        "请基于以上文档，给出详细、准确的回答："
+        "请基于以上文档，给出详细、准确的回答�?
     )
     return prompt
 
 
 class RAGPipeline:
     """
-    RAG (检索增强生成) 主流程管道
+    RAG (检索增强生�? 主流程管�?
     
     整合向量检索、BM25、Reranker、查询改写和 LLM 生成，提供完整的问答能力
     """
     
     def __init__(self, settings: Settings, namespace: str | None = None) -> None:
         """
-        初始化 RAG Pipeline
+        初始�?RAG Pipeline
         
         Args:
             settings: 配置对象
@@ -481,7 +481,7 @@ class RAGPipeline:
             client_kwargs["base_url"] = settings.openai_base_url
         self.client = OpenAI(**client_kwargs)
         
-        # 为 Qwen 创建单独的客户端
+        # �?Qwen 创建单独的客户端
         self.qwen_client = None
         if settings.qwen_api_key:
             qwen_kwargs: Dict[str, Any] = {
@@ -515,23 +515,23 @@ class RAGPipeline:
         """根据模型名称选择对应的客户端"""
         if model and model.startswith("qwen"):
             if self.qwen_client is None:
-                raise ValueError(f"Qwen 模型 '{model}' 需要配置 QWEN_API_KEY")
+                raise ValueError(f"Qwen 模型 '{model}' 需要配�?QWEN_API_KEY")
             return self.qwen_client
         return self.client
 
     def ask(self, question: str, top_k: int | None = None, rerank_enabled: bool | None = None, rerank_top_n: int | None = None, model: str | None = None) -> Tuple[str, List[RetrievedChunk]]:
         k = top_k or self.settings.top_k
         
-        # 尝试从缓存获取检索结果
+        # 尝试从缓存获取检索结�?
         namespace = getattr(self.store, 'namespace', 'default')
         cached_result = query_cache.get(question, k, namespace)
         if cached_result is not None:
             recs = cached_result
         else:
             recs = self.store.search(question, k)
-            # 缓存检索结果
+            # 缓存检索结�?
             query_cache.set(question, k, namespace, recs)
-        # 可选重排
+        # 可选重�?
         use_rr = (self.reranker is not None) and (self.settings.reranker_enabled if rerank_enabled is None else rerank_enabled)
         top_n = rerank_top_n or self.settings.reranker_top_n
         if use_rr:
@@ -552,11 +552,11 @@ class RAGPipeline:
         return answer, recs
 
     def ask_stream(self, question: str, top_k: int | None = None, rerank_enabled: bool | None = None, rerank_top_n: int | None = None, model: str | None = None, system_prompt: str | None = None, web_enabled: bool | None = None, web_top_k: int | None = None):  # noqa: ANN001
-        """返回(生成器, 检索片段)。生成器逐块产出模型文本。"""
+        """返回(生成�? 检索片�?。生成器逐块产出模型文本�?""
         k = top_k or self.settings.top_k
         recs = self.store.search(question, k)
 
-        # 可选：联网搜索补充实时信息（简单实现：调用 DuckDuckGo html API）
+        # 可选：联网搜索补充实时信息（简单实现：调用 DuckDuckGo html API�?
         web_snippets: list[str] = []
         if web_enabled:
             try:
@@ -581,7 +581,7 @@ class RAGPipeline:
             for r, s in zip(recs, scores):
                 r.score = float(s)
             recs = sorted(recs, key=lambda x: x.score, reverse=True)[: top_n]
-        # 将 web 片段拼接到上下文尾部
+        # �?web 片段拼接到上下文尾部
         if web_snippets:
             from dataclasses import dataclass
             @dataclass
@@ -620,22 +620,22 @@ class RAGPipeline:
         model: str | None = None
     ) -> Tuple[str, List[RetrievedChunk], Dict[str, Any]]:
         """
-        使用查询改写增强检索效果
+        使用查询改写增强检索效�?
         
         Args:
             question: 原始查询
             strategy: 改写策略 (expand/decompose/hyde/multi)
             top_k: 每个查询返回的文档数
             rerank_enabled: 是否启用重排
-            rerank_top_n: 重排后保留的文档数
+            rerank_top_n: 重排后保留的文档�?
             model: LLM 模型
         
         Returns:
-            (答案, 检索片段列表, 元数据)
-            元数据包含: original_query, rewritten_queries, strategy
+            (答案, 检索片段列�? 元数�?
+            元数据包�? original_query, rewritten_queries, strategy
         """
         if not self.query_rewriter:
-            # 查询改写器未初始化，回退到普通检索
+            # 查询改写器未初始化，回退到普通检�?
             answer, recs = self.ask(question, top_k, rerank_enabled, rerank_top_n, model)
             return answer, recs, {
                 "original_query": question,
@@ -647,14 +647,14 @@ class RAGPipeline:
         # 1. 改写查询
         rewritten_queries = self.query_rewriter.rewrite_for_retrieval(question, strategy)
         
-        # 2. 对每个改写后的查询进行检索
+        # 2. 对每个改写后的查询进行检�?
         k = top_k or self.settings.top_k
         all_recs: List[RetrievedChunk] = []
         seen_texts = set()
         
         for query in rewritten_queries:
             recs = self.store.search(query, k)
-            # 去重：避免相同文档片段重复出现
+            # 去重：避免相同文档片段重复出�?
             for rec in recs:
                 if rec.text not in seen_texts:
                     seen_texts.add(rec.text)
@@ -699,7 +699,7 @@ class RAGPipeline:
     
     def analyze_query(self, question: str) -> Dict[str, Any]:
         """
-        分析查询特征并推荐最佳改写策略
+        分析查询特征并推荐最佳改写策�?
         
         Args:
             question: 用户查询
@@ -727,4 +727,21 @@ class RAGPipeline:
     def list_paths_with_stats(self, limit: int = 1000) -> List[dict]:
         return self.store.list_paths_with_stats(limit)
 
+
+
+def _dedupe_results(recs: List[RetrievedChunk]) -> List[RetrievedChunk]:
+    seen = set()
+    out: List[RetrievedChunk] = []
+    for r in recs:
+        key = (r.meta.get("path"), r.meta.get("chunk_id"), r.text[:200])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(r)
+    return out
+
+def _apply_score_threshold(recs: List[RetrievedChunk], threshold: float) -> List[RetrievedChunk]:
+    if threshold <= 0:
+        return recs
+    return [r for r in recs if r.score >= threshold]
 

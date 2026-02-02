@@ -2,12 +2,12 @@
   <div class="modal-overlay" @click.self="$emit('close')">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>📚 知识库管理</h3>
-        <button class="close-btn" @click="$emit('close')">✕</button>
+        <h3>📚 知识库管�?/h3>
+        <button class="close-btn" @click="$emit('close')">�?/button>
       </div>
       
       <div class="modal-body">
-        <!-- 搜索栏 -->
+        <!-- 搜索�?-->
         <div class="search-bar">
           <input 
             v-model="searchQuery" 
@@ -21,6 +21,16 @@
             </svg>
           </button>
         </div>
+        <div class="filter-bar">
+          <select v-model="selectedCategory" class="filter-select">
+            <option value="">ȫ������</option>
+            <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
+          </select>
+          <select v-model="selectedTag" class="filter-select">
+            <option value="">ȫ����ǩ</option>
+            <option v-for="t in tags" :key="t" :value="t">{{ t }}</option>
+          </select>
+        </div>
         
         <!-- 统计信息 -->
         <div class="stats-bar">
@@ -29,13 +39,13 @@
             <span class="stat-value">{{ documents.length }}</span>
           </div>
           <div class="stat-item">
-            <span class="stat-label">已筛选</span>
+            <span class="stat-label">已筛�?/span>
             <span class="stat-value">{{ filteredDocuments.length }}</span>
           </div>
         </div>
         
         <!-- 文档列表 -->
-        <div v-if="loading" class="loading">加载中...</div>
+        <div v-if="loading" class="loading">加载�?..</div>
         
         <div v-else-if="filteredDocuments.length === 0" class="empty-state">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
@@ -59,8 +69,8 @@
             <div class="doc-info">
               <div class="doc-name">{{ getFileName(doc.path) }}</div>
               <div class="doc-meta">
-                <span>{{ doc.chunks }} 个分片</span>
-                <span class="separator">•</span>
+                <span>{{ doc.chunks }} 个分�?/span>
+                <span class="separator">�?/span>
                 <span>{{ doc.path }}</span>
               </div>
             </div>
@@ -91,15 +101,15 @@
       </div>
     </div>
     
-    <!-- 预览模态窗口 -->
+    <!-- 预览模态窗�?-->
     <div v-if="previewDoc" class="preview-overlay" @click.self="previewDoc = null">
       <div class="preview-content">
         <div class="preview-header">
           <h4>{{ getFileName(previewDoc.path) }}</h4>
-          <button class="close-btn" @click="previewDoc = null">✕</button>
+          <button class="close-btn" @click="previewDoc = null">�?/button>
         </div>
         <div class="preview-body">
-          <div v-if="loadingPreview" class="loading">加载中...</div>
+          <div v-if="loadingPreview" class="loading">加载�?..</div>
           <div v-else class="chunks-list">
             <div v-for="(chunk, idx) in previewChunks" :key="idx" class="chunk-item">
               <div class="chunk-header">
@@ -116,12 +126,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import api from '../api';
 
 const emit = defineEmits(['close', 'refresh']);
 
 const documents = ref([]);
+const categories = ref([]);
+const tags = ref([]);
+const selectedCategory = ref('');
+const selectedTag = ref('');
 const selectedDoc = ref(null);
 const searchQuery = ref('');
 const loading = ref(false);
@@ -129,12 +143,21 @@ const previewDoc = ref(null);
 const previewChunks = ref([]);
 const loadingPreview = ref(false);
 
+watch([selectedCategory, selectedTag], () => {
+  loadDocuments();
+});
+
 const filteredDocuments = computed(() => {
-  if (!searchQuery.value.trim()) return documents.value;
+  let list = documents.value;
+  if (selectedCategory.value) {
+    list = list.filter(doc => doc.category === selectedCategory.value);
+  }
+  if (selectedTag.value) {
+    list = list.filter(doc => (doc.tags || []).includes(selectedTag.value));
+  }
+  if (!searchQuery.value.trim()) return list;
   const query = searchQuery.value.toLowerCase();
-  return documents.value.filter(doc => 
-    doc.path.toLowerCase().includes(query)
-  );
+  return list.filter(doc => doc.path.toLowerCase().includes(query));
 });
 
 function getFileName(path) {
@@ -155,20 +178,38 @@ function selectDocument(doc) {
 async function loadDocuments() {
   loading.value = true;
   try {
-    const res = await api.listPaths();
+    const res = await api.listDocuments({
+      category: selectedCategory.value || undefined,
+      tags: selectedTag.value || undefined
+    });
     if (res.data.ok) {
-      // 新版 API 直接返回文档统计信息
       const docs = res.data.documents || [];
       documents.value = docs.map(doc => ({
         path: doc.path,
         chunks: doc.chunk_count || 0,
-        lastUpdated: doc.last_updated || new Date().toISOString()
+        lastUpdated: doc.last_updated || new Date().toISOString(),
+        tags: doc.tags || [],
+        category: doc.category || ''
       }));
     }
   } catch (e) {
-    console.error('加载文档列表失败:', e);
+    console.error('�����ĵ��б�ʧ��:', e);
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadFilters() {
+  try {
+    const [tagsRes, categoriesRes] = await Promise.all([api.listTags(), api.listCategories()]);
+    if (tagsRes.data.ok) {
+      tags.value = tagsRes.data.tags || [];
+    }
+    if (categoriesRes.data.ok) {
+      categories.value = categoriesRes.data.categories || [];
+    }
+  } catch (e) {
+    console.error('�����ĵ�ɸѡ��ʧ��:', e);
   }
 }
 
@@ -190,7 +231,7 @@ async function previewDocument(doc) {
 }
 
 async function confirmDelete(doc) {
-  if (!confirm(`确认删除文档 "${getFileName(doc.path)}"？\n\n这将删除该文档的所有 ${doc.chunks} 个分片。`)) {
+  if (!confirm(`确认删除文档 "${getFileName(doc.path)}"？\n\n这将删除该文档的所�?${doc.chunks} 个分片。`)) {
     return;
   }
   
@@ -216,8 +257,8 @@ async function confirmDelete(doc) {
   }
 }
 
-onMounted(() => {
-  loadDocuments();
+onMounted(async () => {
+  await Promise.all([loadDocuments(), loadFilters()]);
 });
 </script>
 
@@ -348,6 +389,21 @@ onMounted(() => {
 .btn-refresh:hover {
   background: var(--bg-primary);
   color: var(--text-primary);
+}
+
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.filter-select {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1.5px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
 }
 
 .stats-bar {
@@ -596,4 +652,6 @@ onMounted(() => {
   word-wrap: break-word;
 }
 </style>
+
+
 

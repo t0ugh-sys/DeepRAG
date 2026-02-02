@@ -58,7 +58,7 @@ class Conversation:
 
 
 class ConversationManager:
-    """对话管理器"""
+    """对话管理�?""
     
     def __init__(self, storage_dir: str = "data/conversations"):
         """
@@ -72,10 +72,10 @@ class ConversationManager:
     
     def create_conversation(
         self, 
-        title: str = "新对话", 
+        title: str = "新对�?, 
         namespace: str = "default"
     ) -> Conversation:
-        """创建新对话"""
+        """创建新对�?""
         conv_id = f"conv_{int(time.time() * 1000)}"
         now = time.time()
         
@@ -109,7 +109,7 @@ class ConversationManager:
         content: str,
         sources: List[Dict[str, Any]] = None
     ) -> Optional[Conversation]:
-        """添加消息到对话"""
+        """添加消息到对�?""
         conversation = self.get_conversation(conv_id)
         if not conversation:
             return None
@@ -132,20 +132,26 @@ class ConversationManager:
         return conversation
     
     def list_conversations(
-        self, 
-        namespace: str = "default", 
-        limit: int = 50
+        self,
+        namespace: str = "default",
+        limit: int = 50,
+        query: str | None = None
     ) -> List[Dict[str, Any]]:
-        """列出对话列表"""
+        """�г��Ի��б�"""
         conversations = []
-        
+
         for file_path in self.storage_dir.glob("*.json"):
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                
+
                 if data.get("namespace") == namespace:
-                    # 只返回摘要信息
+                    if query:
+                        query_lower = query.lower()
+                        title = str(data.get("title", "")).lower()
+                        content = " ".join([m.get("content", "") for m in data.get("messages", [])]).lower()
+                        if query_lower not in title and query_lower not in content:
+                            continue
                     conversations.append({
                         "id": data["id"],
                         "title": data["title"],
@@ -155,11 +161,10 @@ class ConversationManager:
                     })
             except Exception:
                 continue
-        
-        # 按更新时间倒序排列
+
         conversations.sort(key=lambda x: x["updated_at"], reverse=True)
         return conversations[:limit]
-    
+
     def delete_conversation(self, conv_id: str) -> bool:
         """删除对话"""
         file_path = self.storage_dir / f"{conv_id}.json"
@@ -174,7 +179,7 @@ class ConversationManager:
         max_messages: int = 10
     ) -> List[Dict[str, str]]:
         """
-        获取对话上下文（用于 LLM）
+        获取对话上下文（用于 LLM�?
         
         Args:
             conv_id: 对话 ID
@@ -187,7 +192,7 @@ class ConversationManager:
         if not conversation:
             return []
         
-        # 取最近的 N 条消息
+        # 取最近的 N 条消�?
         recent_messages = conversation.messages[-max_messages:]
         
         return [
@@ -196,7 +201,8 @@ class ConversationManager:
         ]
     
     def _save_conversation(self, conversation: Conversation) -> None:
-        """保存对话到文件"""
+        """保存对话到文�?""
         file_path = self.storage_dir / f"{conversation.id}.json"
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(conversation.to_dict(), f, ensure_ascii=False, indent=2)
+

@@ -109,6 +109,16 @@ def _get_pipeline(ns: str) -> RAGPipeline:
     pipelines[ns] = local
     return local
 
+def _resolve_namespace(namespace: str | None) -> str:
+    ns = namespace or settings.default_namespace
+    if settings.namespace_whitelist:
+        allowed = [n.strip() for n in settings.namespace_whitelist.split(",") if n.strip()]
+        if allowed and ns not in allowed:
+            raise HTTPException(status_code=403, detail="Namespace not allowed")
+    if settings.api_key_namespace:
+        if ns != settings.api_key_namespace:
+            raise HTTPException(status_code=403, detail="Namespace not allowed for this API key")
+    return ns
 
 
 
@@ -155,7 +165,7 @@ def _create_collection(ns: str) -> None:
 @app.post("/namespaces/create")
 def ns_create(namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_api_key(x_api_key)
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     try:
         _create_collection(ns)
         return JSONResponse({"ok": True, "namespace": ns, "collection": _collection_name(ns)})
@@ -166,7 +176,7 @@ def ns_create(namespace: str | None = None, x_api_key: str | None = None) -> JSO
 @app.post("/namespaces/clear")
 def ns_clear(namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_api_key(x_api_key)
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     try:
         _ensure_milvus_conn()
         name = _collection_name(ns)
@@ -181,7 +191,7 @@ def ns_clear(namespace: str | None = None, x_api_key: str | None = None) -> JSON
 @app.delete("/namespaces")
 def ns_delete(namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_api_key(x_api_key)
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     try:
         _ensure_milvus_conn()
         name = _collection_name(ns)
@@ -197,7 +207,7 @@ def ask(req: AskRequest, x_api_key: str | None = None, namespace: str | None = N
     _require_api_key(x_api_key)
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化，请检查服务日�?)
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     local = RAGPipeline(settings, ns)
     answer, recs = local.ask(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n, req.model)
     sources: List[SourceItem] = []
@@ -297,7 +307,7 @@ def ask_stream(req: AskRequest, x_api_key: str | None = None, namespace: str | N
     _require_api_key(x_api_key)
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化，请检查服务日�?)
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     local = RAGPipeline(settings, ns)
     gen, recs = local.ask_stream(
         req.question, 
@@ -352,7 +362,7 @@ def ask_with_query_rewriting(req: QueryRewriteRequest, x_api_key: str | None = N
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     local = RAGPipeline(settings, ns)
     
     try:
@@ -418,7 +428,7 @@ def explain_retrieval(req: ExplainRetrievalRequest, x_api_key: str | None = None
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     local = RAGPipeline(settings, ns)
     
     try:
@@ -497,7 +507,7 @@ def advanced_search(req: AdvancedSearchRequest, x_api_key: str | None = None, na
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     local = RAGPipeline(settings, ns)
     
     try:
@@ -580,7 +590,7 @@ def optimize_weights(req: OptimizeWeightsRequest, x_api_key: str | None = None, 
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     local = RAGPipeline(settings, ns)
     
     try:
@@ -643,7 +653,7 @@ def visualize_chunks(req: VisualizeChunksRequest, x_api_key: str | None = None, 
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     local = RAGPipeline(settings, ns)
     
     try:
@@ -702,7 +712,7 @@ def preview_document_chunks(path: str, x_api_key: str | None = None, namespace: 
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     local = RAGPipeline(settings, ns)
     
     try:
@@ -753,7 +763,7 @@ async def upsert_doc(
     _require_api_key(x_api_key)
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     local = RAGPipeline(settings, ns)
     
     try:
@@ -823,7 +833,7 @@ def delete_doc(path: str, x_api_key: str | None = None, namespace: str | None = 
     _require_api_key(x_api_key)
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     local = RAGPipeline(settings, ns)
     try:
         deleted = local.delete_document(path)
@@ -836,7 +846,7 @@ def delete_doc(path: str, x_api_key: str | None = None, namespace: str | None = 
 def list_doc_paths(limit: int = 1000, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     local = RAGPipeline(settings, ns)
     docs_stats = local.list_paths_with_stats(limit)
     return JSONResponse({"ok": True, "documents": docs_stats})
@@ -848,7 +858,7 @@ def export_by_path(path: str, namespace: str | None = None) -> JSONResponse:  # 
         return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
     
     try:
-        ns = namespace or settings.default_namespace
+        ns = _resolve_namespace(namespace)
         local = RAGPipeline(settings, ns)
         store = local.store
         backend = getattr(store, "backend", "faiss")
@@ -889,14 +899,14 @@ def import_chunks(payload: Dict[str, Any], x_api_key: str | None = None, namespa
             return JSONResponse({"ok": False, "error": "invalid payload"}, status_code=400)
         # 先删除再写入
         try:
-            ns = namespace or settings.default_namespace
+            ns = _resolve_namespace(namespace)
             local = RAGPipeline(settings, ns)
             local.delete_document(path)
         except Exception:
             pass
         # 直接将文本拼接后按现�?split 重新切分更稳�?
         combined = "\n\n".join([c.get("text", "") for c in chunks])
-        ns = namespace or settings.default_namespace
+        ns = _resolve_namespace(namespace)
         local = RAGPipeline(settings, ns)
         added = local.add_document(path, combined)
         return JSONResponse({"ok": True, "added": added})
@@ -933,16 +943,16 @@ conv_manager = ConversationManager()
 @app.post("/conversations")
 def create_conversation(title: str = "新对�?, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
     """创建新对�?""
-    ns = namespace or settings.default_namespace
+    ns = _resolve_namespace(namespace)
     conversation = conv_manager.create_conversation(title=title, namespace=ns)
     return JSONResponse({"ok": True, "conversation": conversation.to_dict()})
 
 
 @app.get("/conversations")
-def list_conversations(namespace: str | None = None, limit: int = 50) -> JSONResponse:  # type: ignore[override]
+def list_conversations(namespace: str | None = None, limit: int = 50, query: str | None = None) -> JSONResponse:  # type: ignore[override]
     """列出对话列表"""
-    ns = namespace or settings.default_namespace
-    conversations = conv_manager.list_conversations(namespace=ns, limit=limit)
+    ns = _resolve_namespace(namespace)
+    conversations = conv_manager.list_conversations(namespace=ns, limit=limit, query=query)
     return JSONResponse({"ok": True, "conversations": conversations})
 
 
@@ -2105,6 +2115,8 @@ def import_knowledge_graph(
     except Exception as e:
         logger.error(f"导入知识图谱失败: {e}")
         return error_response(message=str(e))
+
+
 
 
 

@@ -3,8 +3,12 @@
     <div class="panel-header">
       <h3>💬 对话历史</h3>
       <button @click="createNewConversation" class="new-btn" title="新建对话">
-        ➕ 新对话
+        �?新对�?
       </button>
+    </div>
+
+    <div class="search-bar">
+      <input v-model="searchQuery" type="text" placeholder="�����Ի�..." class="search-input" />
     </div>
 
     <div v-if="loading" class="loading">
@@ -13,54 +17,72 @@
 
     <div v-else class="conversations-list">
       <div 
-        v-for="conv in conversations" 
+        v-for="conv in filteredConversations" 
         :key="conv.id"
         class="conversation-item"
         :class="{ active: conv.id === activeConversationId }"
         @click="selectConversation(conv.id)"
       >
         <div class="conv-header">
-          <span class="conv-title">{{ conv.title || '新对话' }}</span>
+          <span class="conv-title">{{ conv.title || '新对�? }}</span>
           <button 
             @click.stop="deleteConversation(conv.id)" 
             class="delete-btn"
             title="删除对话"
           >
-            🗑️
+            🗑�?
           </button>
         </div>
         <div class="conv-meta">
           <span class="conv-time">{{ formatTime(conv.created_at) }}</span>
-          <span class="conv-count">{{ conv.message_count }} 条消息</span>
+          <span class="conv-count">{{ conv.message_count }} 条消�?/span>
         </div>
       </div>
 
-      <div v-if="conversations.length === 0" class="empty-state">
+      <div v-if="filteredConversations.length === 0" class="empty-state">
         <p>暂无对话历史</p>
-        <p class="hint">点击"新对话"开始聊天</p>
+        <p class="hint">点击"新对�?开始聊�?/p>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 
+import api from '../api'
 const emit = defineEmits(['select-conversation', 'new-conversation'])
 
 const loading = ref(false)
 const conversations = ref([])
+const searchQuery = ref('')
+const filteredConversations = computed(() => {
+  if (!searchQuery.value.trim()) return conversations.value;
+  const q = searchQuery.value.toLowerCase();
+  return conversations.value.filter(c => (c.title || '').toLowerCase().includes(q));
+});
 const activeConversationId = ref(null)
+
+watch(searchQuery, () => {
+  loadConversations()
+})
 
 const loadConversations = async () => {
   loading.value = true
   try {
-    const response = await fetch('http://localhost:8000/conversations')
-    const result = await response.json()
-    
+    const response = await api.listConversations({
+      query: searchQuery.value || undefined
+    })
+    const result = response.data
     if (result.ok) {
-      conversations.value = result.data.conversations || []
+      conversations.value = result.conversations || []
     }
+  } catch (err) {
+    console.error('���ضԻ��б�ʧ��:', err)
+  } finally {
+    loading.value = false
+  }
+}
   } catch (err) {
     console.error('加载对话列表失败:', err)
   } finally {
@@ -79,15 +101,10 @@ const createNewConversation = () => {
 }
 
 const deleteConversation = async (id) => {
-  if (!confirm('确定要删除这个对话吗？')) return
-  
+  if (!confirm('ȷ��Ҫɾ������Ի���')) return
   try {
-    const response = await fetch(`http://localhost:8000/conversations/${id}`, {
-      method: 'DELETE'
-    })
-    
-    const result = await response.json()
-    
+    const response = await api.deleteConversation(id)
+    const result = response.data
     if (result.ok) {
       conversations.value = conversations.value.filter(c => c.id !== id)
       if (activeConversationId.value === id) {
@@ -95,8 +112,8 @@ const deleteConversation = async (id) => {
       }
     }
   } catch (err) {
-    console.error('删除对话失败:', err)
-    alert('删除失败')
+    console.error('ɾ���Ի�ʧ��:', err)
+    alert('ɾ��ʧ��')
   }
 }
 
@@ -115,12 +132,12 @@ const formatTime = (timestamp) => {
     return `${Math.floor(diff / 60000)} 分钟前`
   }
   
-  // 小于1天
+  // 小于1�?
   if (diff < 86400000) {
     return `${Math.floor(diff / 3600000)} 小时前`
   }
   
-  // 小于7天
+  // 小于7�?
   if (diff < 604800000) {
     return `${Math.floor(diff / 86400000)} 天前`
   }
@@ -148,6 +165,19 @@ defineExpose({
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
+}
+
+.search-bar {
+  padding: 0 16px 8px;
+}
+.search-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1.5px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
 }
 
 .panel-header {
