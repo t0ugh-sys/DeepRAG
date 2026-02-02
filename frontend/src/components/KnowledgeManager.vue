@@ -1,13 +1,13 @@
-<template>
+﻿<template>
   <div class="modal-overlay" @click.self="$emit('close')">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>📚 知识库管�?/h3>
-        <button class="close-btn" @click="$emit('close')">�?/button>
+        <h3>📚 知识库管理</h3>
+        <button class="close-btn" @click="$emit('close')">×</button>
       </div>
       
       <div class="modal-body">
-        <!-- 搜索�?-->
+        <!-- 搜索栏 -->
         <div class="search-bar">
           <input 
             v-model="searchQuery" 
@@ -23,11 +23,11 @@
         </div>
         <div class="filter-bar">
           <select v-model="selectedCategory" class="filter-select">
-            <option value="">ȫ������</option>
+            <option value="">全部分类</option>
             <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
           </select>
           <select v-model="selectedTag" class="filter-select">
-            <option value="">ȫ����ǩ</option>
+            <option value="">全部标签</option>
             <option v-for="t in tags" :key="t" :value="t">{{ t }}</option>
           </select>
         </div>
@@ -39,13 +39,13 @@
             <span class="stat-value">{{ documents.length }}</span>
           </div>
           <div class="stat-item">
-            <span class="stat-label">已筛�?/span>
+            <span class="stat-label">已筛选</span>
             <span class="stat-value">{{ filteredDocuments.length }}</span>
           </div>
         </div>
         
         <!-- 文档列表 -->
-        <div v-if="loading" class="loading">加载�?..</div>
+        <div v-if="loading" class="loading">加载中...</div>
         
         <div v-else-if="filteredDocuments.length === 0" class="empty-state">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
@@ -69,8 +69,8 @@
             <div class="doc-info">
               <div class="doc-name">{{ getFileName(doc.path) }}</div>
               <div class="doc-meta">
-                <span>{{ doc.chunks }} 个分�?/span>
-                <span class="separator">�?/span>
+                <span>{{ doc.chunks }} 个分片</span>
+                <span class="separator">·</span>
                 <span>{{ doc.path }}</span>
               </div>
             </div>
@@ -101,15 +101,15 @@
       </div>
     </div>
     
-    <!-- 预览模态窗�?-->
+    <!-- 预览模态窗口 -->
     <div v-if="previewDoc" class="preview-overlay" @click.self="previewDoc = null">
       <div class="preview-content">
         <div class="preview-header">
           <h4>{{ getFileName(previewDoc.path) }}</h4>
-          <button class="close-btn" @click="previewDoc = null">�?/button>
+          <button class="close-btn" @click="previewDoc = null">×</button>
         </div>
         <div class="preview-body">
-          <div v-if="loadingPreview" class="loading">加载�?..</div>
+          <div v-if="loadingPreview" class="loading">加载中...</div>
           <div v-else class="chunks-list">
             <div v-for="(chunk, idx) in previewChunks" :key="idx" class="chunk-item">
               <div class="chunk-header">
@@ -165,8 +165,8 @@ function getFileName(path) {
 }
 
 function getFileIcon(path) {
-  if (path.endsWith('.md')) return '📝';
-  if (path.endsWith('.txt')) return '📄';
+  if (path.endsWith('.md')) return '📄';
+  if (path.endsWith('.txt')) return '📃';
   if (path.endsWith('.pdf')) return '📕';
   return '📄';
 }
@@ -193,7 +193,7 @@ async function loadDocuments() {
       }));
     }
   } catch (e) {
-    console.error('�����ĵ��б�ʧ��:', e);
+    console.error('加载文档列表失败:', e);
   } finally {
     loading.value = false;
   }
@@ -209,7 +209,7 @@ async function loadFilters() {
       categories.value = categoriesRes.data.categories || [];
     }
   } catch (e) {
-    console.error('�����ĵ�ɸѡ��ʧ��:', e);
+    console.error('加载文档筛选项失败:', e);
   }
 }
 
@@ -231,7 +231,7 @@ async function previewDocument(doc) {
 }
 
 async function confirmDelete(doc) {
-  if (!confirm(`确认删除文档 "${getFileName(doc.path)}"？\n\n这将删除该文档的所�?${doc.chunks} 个分片。`)) {
+  if (!confirm(`确认删除文档 "${getFileName(doc.path)}"？\n\n这将删除该文档的所有 ${doc.chunks} 个分片。`)) {
     return;
   }
   
@@ -652,6 +652,7 @@ onMounted(async () => {
   word-wrap: break-word;
 }
 </style>
+
 
 
 
