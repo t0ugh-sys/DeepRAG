@@ -1,4 +1,4 @@
-# 🚀 DeepRAG - 企业级 RAG 知识库系统
+﻿# 🚀 DeepRAG - 企业级 RAG 知识库系统
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-green.svg)](https://fastapi.tiangolo.com/)
@@ -109,8 +109,7 @@ SERPER_API_KEY=
 
 # 多租户与鉴权
 RAG_NAMESPACE=default
-RAG_API_KEY=  # 可选，设置后需请求头 X-API-Key
-```
+RAG_API_KEY=  # 可选，设置后需请求头 X-API-Key\r\nRAG_API_KEY_REQUIRED=false  # 是否强制鉴权（true/false）\r\n\r\n# CORS 配置\r\nRAG_CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173\r\nRAG_CORS_ALLOW_CREDENTIALS=true\r\nRAG_CORS_ALLOW_METHODS=*\r\nRAG_CORS_ALLOW_HEADERS=*\r\n```
 
 ### 3. 准备文档并构建索引
 
@@ -280,7 +279,7 @@ response = requests.post(
         "top_k": 8,
         "model": "deepseek-chat",          # 可选
         "system_prompt": "请用清晰小节回答：\n{context}\n问题：{question}",
-        "web_enabled": true,                 # 可选
+        "web_enabled": True,                 # 可选
         "web_top_k": 3
     },
     headers={"X-API-Key": "your-key"},  # 可选
@@ -302,7 +301,7 @@ curl -X POST http://localhost:8000/ask_stream \
     "top_k": 8,
     "model": "qwen-plus",
     "system_prompt": "{context}\n\n请基于以上内容回答：{question}",
-    "web_enabled": true,
+    "web_enabled": True,
     "web_top_k": 3
   }'
 ```
@@ -376,3 +375,5 @@ MILVUS_SECURE=true
 ---
 
 **Star ⭐ 本项目以支持开发者持续维护！**
+
+

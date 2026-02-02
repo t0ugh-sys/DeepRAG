@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from backend.config import Settings
 from backend.rag import RAGPipeline, RetrievedChunk
 from backend.utils.logger import logger
-from backend.utils.middleware import RequestLoggingMiddleware
+from backend.utils.middleware import RequestLoggingMiddleware, get_current_request
 from backend.utils.responses import success_response, error_response
 from backend.utils.cache import query_cache
 from backend.performance_monitor import get_monitor, RequestTimer
@@ -21,15 +21,17 @@ from backend.performance_monitor import get_monitor, RequestTimer
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    logger.info("🚀 RAG 服务启动中...")
-    # 初始化 pipeline
+    logger.info("🚀 RAG 服务启动�?..")
+    # 初始�?pipeline
     global pipeline
+    global pipelines
     try:
         logger.info("加载 RAG Pipeline...")
         pipeline = RAGPipeline(settings, settings.default_namespace)
-        logger.info("✓ RAG Pipeline 加载完成")
+        pipelines[settings.default_namespace] = pipeline
+        logger.info("�?RAG Pipeline 加载完成")
     except Exception as e:
-        logger.error(f"✗ RAG Pipeline 加载失败: {e}")
+        logger.error(f"�?RAG Pipeline 加载失败: {e}")
         raise
     yield
     logger.info("👋 RAG 服务关闭")
@@ -40,18 +42,18 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 添加请求日志中间件
+# 添加请求日志中间�?
 app.add_middleware(RequestLoggingMiddleware)
-# CORS 配置：开发环境允许所有源；生产环境建议限制具体域名
+# CORS 配置：开发环境允许所有源；生产环境建议限制具体域�?
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],  # Vite 默认端口
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,  # Vite dev
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=cors_methods,
+    allow_headers=cors_headers,
 )
 
-# 前端已迁移到独立 Vue 项目，不再需要静态文件挂载
+# 前端已迁移到独立 Vue 项目，不再需要静态文件挂�?
 @app.get("/")
 def root() -> dict:  # type: ignore[override]
     return {"message": "RAG API Server", "version": "0.2.0", "docs": "/docs"}
@@ -82,13 +84,30 @@ class AskResponse(BaseModel):
 
 settings = Settings()
 pipeline = None
+pipelines: Dict[str, RAGPipeline] = {}
+cors_origins = [o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()]
+cors_methods = [m.strip() for m in settings.cors_allow_methods.split(",") if m.strip()]
+cors_headers = [h.strip() for h in settings.cors_allow_headers.split(",") if h.strip()]
 
-def _require_api_key(headers: Dict[str, str]) -> None:
-    if settings.api_key:
-        key = headers.get('x-api-key') or headers.get('X-API-Key') or headers.get('X-Api-Key')
-        if key != settings.api_key:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=401, detail='Unauthorized')
+def _require_api_key(x_api_key: str | None = None) -> None:
+    if not settings.api_key_required:
+        return
+    if not settings.api_key:
+        raise HTTPException(status_code=500, detail="API key required but not configured")
+    key = x_api_key
+    if not key:
+        request = get_current_request()
+        if request is not None:
+            key = request.headers.get("X-API-Key") or request.headers.get("x-api-key")
+    if key != settings.api_key:
+        raise HTTPException(status_code=401, detail='Unauthorized')
+
+def _get_pipeline(ns: str) -> RAGPipeline:
+    if ns in pipelines:
+        return pipelines[ns]
+    local = RAGPipeline(settings, ns)
+    pipelines[ns] = local
+    return local
 
 
 
@@ -135,7 +154,7 @@ def _create_collection(ns: str) -> None:
 
 @app.post("/namespaces/create")
 def ns_create(namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     ns = namespace or settings.default_namespace
     try:
         _create_collection(ns)
@@ -146,7 +165,7 @@ def ns_create(namespace: str | None = None, x_api_key: str | None = None) -> JSO
 
 @app.post("/namespaces/clear")
 def ns_clear(namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     ns = namespace or settings.default_namespace
     try:
         _ensure_milvus_conn()
@@ -161,7 +180,7 @@ def ns_clear(namespace: str | None = None, x_api_key: str | None = None) -> JSON
 
 @app.delete("/namespaces")
 def ns_delete(namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     ns = namespace or settings.default_namespace
     try:
         _ensure_milvus_conn()
@@ -175,9 +194,9 @@ def ns_delete(namespace: str | None = None, x_api_key: str | None = None) -> JSO
 
 @app.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest, x_api_key: str | None = None, namespace: str | None = None) -> AskResponse:  # type: ignore[override]
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     if pipeline is None:
-        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化，请检查服务日志")
+        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化，请检查服务日�?)
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
     answer, recs = local.ask(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n, req.model)
@@ -194,7 +213,7 @@ def ask(req: AskRequest, x_api_key: str | None = None, namespace: str | None = N
 
 @app.get("/models")
 def get_available_models() -> JSONResponse:  # type: ignore[override]
-    """获取可用的 LLM 模型列表"""
+    """获取可用�?LLM 模型列表"""
     models = settings.available_models.split(",")
     return JSONResponse({
         "ok": True,
@@ -228,7 +247,7 @@ def healthz() -> JSONResponse:  # type: ignore[override]
                     "milvus_entities": int(num) if isinstance(num, int) else num,
                 })
                 
-                # 统计唯一文档数
+                # 统计唯一文档�?
                 try:
                     unique_paths = pipeline.list_paths(limit=10000)
                     details["document_count"] = len(unique_paths)
@@ -236,11 +255,11 @@ def healthz() -> JSONResponse:  # type: ignore[override]
                     details["document_count"] = 0
                     
             except Exception as e:
-                logger.warning(f"Milvus 状态检查失败: {e}")
+                logger.warning(f"Milvus 状态检查失�? {e}")
                 details["milvus_warning"] = str(e)
                 details["document_count"] = 0
         else:
-            # FAISS 或其他后端：统计文档数
+            # FAISS 或其他后端：统计文档�?
             try:
                 unique_paths = pipeline.list_paths(limit=10000)
                 details["document_count"] = len(unique_paths)
@@ -263,21 +282,21 @@ def healthz() -> JSONResponse:  # type: ignore[override]
             "reranker_enabled": pipeline.settings.reranker_enabled,
         })
         
-        logger.debug("健康检查完成")
+        logger.debug("健康检查完�?)
         
     except Exception as exc:
         ok = False
         details["error"] = str(exc)
-        logger.error(f"健康检查失败: {exc}")
+        logger.error(f"健康检查失�? {exc}")
     
     return JSONResponse({"ok": ok, "details": details})
 
 
 @app.post("/ask_stream")
 def ask_stream(req: AskRequest, x_api_key: str | None = None, namespace: str | None = None):  # type: ignore[override]
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     if pipeline is None:
-        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化，请检查服务日志")
+        raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化，请检查服务日�?)
     ns = namespace or settings.default_namespace
     local = RAGPipeline(settings, ns)
     gen, recs = local.ask_stream(
@@ -328,8 +347,8 @@ class QueryRewriteResponse(BaseModel):
 
 @app.post("/ask_with_rewriting", response_model=QueryRewriteResponse)
 def ask_with_query_rewriting(req: QueryRewriteRequest, x_api_key: str | None = None, namespace: str | None = None) -> QueryRewriteResponse:
-    """使用查询改写增强检索效果"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """使用查询改写增强检索效�?""
+    _require_api_key(x_api_key)
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
@@ -372,8 +391,8 @@ class QueryAnalysisRequest(BaseModel):
 
 @app.post("/analyze_query")
 def analyze_query(req: QueryAnalysisRequest, x_api_key: str | None = None) -> Dict[str, Any]:
-    """分析查询特征并推荐最佳改写策略"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """分析查询特征并推荐最佳改写策�?""
+    _require_api_key(x_api_key)
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
@@ -385,7 +404,7 @@ def analyze_query(req: QueryAnalysisRequest, x_api_key: str | None = None) -> Di
         return error_response(message=str(e))
 
 
-# ==================== 检索结果解释 API ====================
+# ==================== 检索结果解�?API ====================
 
 class ExplainRetrievalRequest(BaseModel):
     question: str
@@ -395,7 +414,7 @@ class ExplainRetrievalRequest(BaseModel):
 @app.post("/explain_retrieval")
 def explain_retrieval(req: ExplainRetrievalRequest, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
     """解释检索结果，显示为什么检索到这些文档"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
@@ -403,10 +422,10 @@ def explain_retrieval(req: ExplainRetrievalRequest, x_api_key: str | None = None
     local = RAGPipeline(settings, ns)
     
     try:
-        # 执行检索
+        # 执行检�?
         recs = local.store.search(req.question, req.top_k)
         
-        # 转换为字典格式
+        # 转换为字典格�?
         chunks = [
             {
                 "text": r.text,
@@ -422,7 +441,7 @@ def explain_retrieval(req: ExplainRetrievalRequest, x_api_key: str | None = None
         explanations = explainer.explain_retrieval(req.question, chunks)
         summary = explainer.generate_summary(explanations)
         
-        # 格式化返回
+        # 格式化返�?
         results = []
         for exp in explanations:
             results.append({
@@ -444,11 +463,11 @@ def explain_retrieval(req: ExplainRetrievalRequest, x_api_key: str | None = None
         })
     
     except Exception as e:
-        logger.error(f"检索解释失败: {e}")
+        logger.error(f"检索解释失�? {e}")
         return error_response(message=str(e))
 
 
-# ==================== 高级检索 API ====================
+# ==================== 高级检�?API ====================
 
 class AdvancedSearchRequest(BaseModel):
     question: str
@@ -473,8 +492,8 @@ class AdvancedSearchRequest(BaseModel):
 
 @app.post("/advanced_search")
 def advanced_search(req: AdvancedSearchRequest, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
-    """高级检索 - 支持过滤、权重调优、聚合"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """高级检�?- 支持过滤、权重调优、聚�?""
+    _require_api_key(x_api_key)
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
@@ -487,10 +506,10 @@ def advanced_search(req: AdvancedSearchRequest, x_api_key: str | None = None, na
         # 创建高级检索器
         retriever = create_retriever()
         
-        # 执行基础检索
+        # 执行基础检�?
         recs = local.store.search(req.question, req.top_k * 2)  # 多检索一些，后面过滤
         
-        # 转换为字典格式
+        # 转换为字典格�?
         results = [
             {
                 "text": r.text,
@@ -524,7 +543,7 @@ def advanced_search(req: AdvancedSearchRequest, x_api_key: str | None = None, na
         elif req.aggregate_by == "type":
             aggregated = retriever.aggregate_by_type(filtered_results)
         
-        # 格式化返回
+        # 格式化返�?
         response_data = {
             "query": req.question,
             "results": filtered_results,
@@ -544,7 +563,7 @@ def advanced_search(req: AdvancedSearchRequest, x_api_key: str | None = None, na
         return success_response(data=response_data)
     
     except Exception as e:
-        logger.error(f"高级检索失败: {e}")
+        logger.error(f"高级检索失�? {e}")
         return error_response(message=str(e))
 
 
@@ -556,8 +575,8 @@ class OptimizeWeightsRequest(BaseModel):
 
 @app.post("/optimize_weights")
 def optimize_weights(req: OptimizeWeightsRequest, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
-    """权重优化 - 测试不同权重组合的效果"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """权重优化 - 测试不同权重组合的效�?""
+    _require_api_key(x_api_key)
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
@@ -577,7 +596,7 @@ def optimize_weights(req: OptimizeWeightsRequest, x_api_key: str | None = None, 
                 {"vector": 0.0, "bm25": 1.0}
             ]
         
-        # 执行检索
+        # 执行检�?
         recs = local.store.search(req.question, req.top_k)
         
         results = []
@@ -596,14 +615,14 @@ def optimize_weights(req: OptimizeWeightsRequest, x_api_key: str | None = None, 
             }
             results.append(result)
         
-        # 推荐最佳权重
+        # 推荐最佳权�?
         best = max(results, key=lambda x: x["avg_score"])
         
         return success_response(data={
             "query": req.question,
             "test_results": results,
             "recommended_weights": best["weights"],
-            "note": "推荐权重基于平均分数，实际效果需要人工评估"
+            "note": "推荐权重基于平均分数，实际效果需要人工评�?
         })
     
     except Exception as e:
@@ -611,7 +630,7 @@ def optimize_weights(req: OptimizeWeightsRequest, x_api_key: str | None = None, 
         return error_response(message=str(e))
 
 
-# ==================== 文档分块可视化 API ====================
+# ==================== 文档分块可视�?API ====================
 
 class VisualizeChunksRequest(BaseModel):
     path: str
@@ -620,7 +639,7 @@ class VisualizeChunksRequest(BaseModel):
 @app.post("/visualize_chunks")
 def visualize_chunks(req: VisualizeChunksRequest, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
     """可视化文档的分块结果"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
@@ -628,7 +647,7 @@ def visualize_chunks(req: VisualizeChunksRequest, x_api_key: str | None = None, 
     local = RAGPipeline(settings, ns)
     
     try:
-        # 从索引中获取该文档的所有分块
+        # 从索引中获取该文档的所有分�?
         chunks = []
         for i, (text, meta) in enumerate(zip(local.store.texts, local.store.metas)):
             if meta.get("path") == req.path:
@@ -644,7 +663,7 @@ def visualize_chunks(req: VisualizeChunksRequest, x_api_key: str | None = None, 
                 })
         
         if not chunks:
-            return error_response(message=f"未找到文档: {req.path}")
+            return error_response(message=f"未找到文�? {req.path}")
         
         # 排序
         chunks.sort(key=lambda x: x["chunk_id"])
@@ -672,14 +691,14 @@ def visualize_chunks(req: VisualizeChunksRequest, x_api_key: str | None = None, 
         })
     
     except Exception as e:
-        logger.error(f"文档分块可视化失败: {e}")
+        logger.error(f"文档分块可视化失�? {e}")
         return error_response(message=str(e))
 
 
 @app.get("/docs/preview")
 def preview_document_chunks(path: str, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
-    """预览文档的分块情况（GET 方式）"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """预览文档的分块情况（GET 方式�?""
+    _require_api_key(x_api_key)
     if pipeline is None:
         raise HTTPException(status_code=503, detail="RAG Pipeline 未初始化")
     
@@ -699,7 +718,7 @@ def preview_document_chunks(path: str, x_api_key: str | None = None, namespace: 
                 })
         
         if not chunks_preview:
-            return error_response(message=f"未找到文档: {path}")
+            return error_response(message=f"未找到文�? {path}")
         
         chunks_preview.sort(key=lambda x: x["chunk_id"])
         
@@ -731,7 +750,7 @@ async def upsert_doc(
     x_api_key: str | None = None, 
     namespace: str | None = None
 ) -> JSONResponse:  # type: ignore[override]
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
     ns = namespace or settings.default_namespace
@@ -741,10 +760,10 @@ async def upsert_doc(
         final_path: str | None = None
         text: str | None = None
         
-        # 检查 Content-Type 来决定如何解析请求
+        # 检�?Content-Type 来决定如何解析请�?
         content_type = request.headers.get("content-type", "")
         
-        # 如果是 JSON 请求
+        # 如果�?JSON 请求
         if "application/json" in content_type:
             try:
                 body = await request.json()
@@ -756,7 +775,7 @@ async def upsert_doc(
                 logger.error(f"解析 JSON 失败: {e}")
                 return JSONResponse({"ok": False, "error": f"JSON 解析失败: {str(e)}"}, status_code=400)
         
-        # 如果是 multipart/form-data
+        # 如果�?multipart/form-data
         elif "multipart/form-data" in content_type:
             if file is not None and path is not None:
                 final_path = path
@@ -778,22 +797,22 @@ async def upsert_doc(
                     except Exception:
                         text = ""
             else:
-                return JSONResponse({"ok": False, "error": "multipart 请求需要 file 和 path"}, status_code=400)
+                return JSONResponse({"ok": False, "error": "multipart 请求需�?file �?path"}, status_code=400)
         
         else:
             return JSONResponse({"ok": False, "error": f"不支持的 Content-Type: {content_type}"}, status_code=400)
         
         if not final_path or text is None:
-            return JSONResponse({"ok": False, "error": "path 或 text 为空"}, status_code=400)
+            return JSONResponse({"ok": False, "error": "path �?text 为空"}, status_code=400)
         
         # 统一使用正斜杠，避免 Windows 路径混乱
         final_path = final_path.replace("\\", "/")
         added = local.add_document(final_path, text or "")
-        logger.info(f"✓ 文档上传成功: {final_path}, 新增 {added} 个分片")
+        logger.info(f"�?文档上传成功: {final_path}, 新增 {added} 个分�?)
         return JSONResponse({"ok": True, "added_chunks": added})
     except Exception as e:
-        # 在 FAISS 模式下，add_document 会抛出错误；改为返回 400 与提示
-        logger.error(f"✗ 文档上传失败: {final_path}, 错误: {str(e)}")
+        # �?FAISS 模式下，add_document 会抛出错误；改为返回 400 与提�?
+        logger.error(f"�?文档上传失败: {final_path}, 错误: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
@@ -801,7 +820,7 @@ async def upsert_doc(
 
 @app.delete("/docs")
 def delete_doc(path: str, x_api_key: str | None = None, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
     ns = namespace or settings.default_namespace
@@ -843,7 +862,7 @@ def export_by_path(path: str, namespace: str | None = None) -> JSONResponse:  # 
             recs = store.collection.query(expr=expr, output_fields=["path", "chunk_id", "text"], limit=10000)
             chunks = recs
         else:
-            # FAISS 后端：从内存中过滤
+            # FAISS 后端：从内存中过�?
             for i, meta in enumerate(store.metas):
                 if meta.get("path") == path:
                     chunks.append({
@@ -860,7 +879,7 @@ def export_by_path(path: str, namespace: str | None = None) -> JSONResponse:  # 
 
 @app.post("/import")
 def import_chunks(payload: Dict[str, Any], x_api_key: str | None = None, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "RAG Pipeline 未初始化"}, status_code=503)
     try:
@@ -875,7 +894,7 @@ def import_chunks(payload: Dict[str, Any], x_api_key: str | None = None, namespa
             local.delete_document(path)
         except Exception:
             pass
-        # 直接将文本拼接后按现有 split 重新切分更稳妥
+        # 直接将文本拼接后按现�?split 重新切分更稳�?
         combined = "\n\n".join([c.get("text", "") for c in chunks])
         ns = namespace or settings.default_namespace
         local = RAGPipeline(settings, ns)
@@ -888,7 +907,7 @@ def import_chunks(payload: Dict[str, Any], x_api_key: str | None = None, namespa
 @app.get("/cache/stats")
 def cache_stats(x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
     """获取缓存统计信息"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     return JSONResponse({
         "ok": True,
         "cache_size": query_cache.size(),
@@ -899,10 +918,10 @@ def cache_stats(x_api_key: str | None = None) -> JSONResponse:  # type: ignore[o
 @app.post("/cache/clear")
 def cache_clear(x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
     """清空缓存"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     query_cache.clear()
-    logger.info("缓存已清空")
-    return JSONResponse({"ok": True, "message": "缓存已清空"})
+    logger.info("缓存已清�?)
+    return JSONResponse({"ok": True, "message": "缓存已清�?})
 
 
 # ==================== 对话管理 API ====================
@@ -912,8 +931,8 @@ conv_manager = ConversationManager()
 
 
 @app.post("/conversations")
-def create_conversation(title: str = "新对话", namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
-    """创建新对话"""
+def create_conversation(title: str = "新对�?, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
+    """创建新对�?""
     ns = namespace or settings.default_namespace
     conversation = conv_manager.create_conversation(title=title, namespace=ns)
     return JSONResponse({"ok": True, "conversation": conversation.to_dict()})
@@ -932,7 +951,7 @@ def get_conversation(conv_id: str) -> JSONResponse:  # type: ignore[override]
     """获取对话详情"""
     conversation = conv_manager.get_conversation(conv_id)
     if not conversation:
-        return JSONResponse({"ok": False, "error": "对话不存在"}, status_code=404)
+        return JSONResponse({"ok": False, "error": "对话不存�?}, status_code=404)
     return JSONResponse({"ok": True, "conversation": conversation.to_dict()})
 
 
@@ -941,8 +960,8 @@ def delete_conversation_endpoint(conv_id: str) -> JSONResponse:  # type: ignore[
     """删除对话"""
     success = conv_manager.delete_conversation(conv_id)
     if success:
-        return JSONResponse({"ok": True, "message": "对话已删除"})
-    return JSONResponse({"ok": False, "error": "对话不存在"}, status_code=404)
+        return JSONResponse({"ok": True, "message": "对话已删�?})
+    return JSONResponse({"ok": False, "error": "对话不存�?}, status_code=404)
 
 
 @app.post("/conversations/{conv_id}/messages")
@@ -952,10 +971,10 @@ def add_message_to_conversation(
     content: str,
     sources: List[Dict[str, Any]] | None = None
 ) -> JSONResponse:  # type: ignore[override]
-    """添加消息到对话"""
+    """添加消息到对�?""
     conversation = conv_manager.add_message(conv_id, role, content, sources)
     if not conversation:
-        return JSONResponse({"ok": False, "error": "对话不存在"}, status_code=404)
+        return JSONResponse({"ok": False, "error": "对话不存�?}, status_code=404)
     return JSONResponse({"ok": True, "conversation": conversation.to_dict()})
 
 
@@ -964,7 +983,7 @@ def add_message_to_conversation(
 @app.get("/metrics/statistics")
 def get_performance_statistics(x_api_key: str | None = None) -> Dict[str, Any]:
     """获取性能统计信息"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     monitor = get_monitor()
     
     return success_response(data={
@@ -977,7 +996,7 @@ def get_performance_statistics(x_api_key: str | None = None) -> Dict[str, Any]:
 @app.get("/metrics/hot_queries")
 def get_hot_queries(top_n: int = 10, x_api_key: str | None = None) -> Dict[str, Any]:
     """获取热门查询"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     monitor = get_monitor()
     
     return success_response(data={
@@ -988,7 +1007,7 @@ def get_hot_queries(top_n: int = 10, x_api_key: str | None = None) -> Dict[str, 
 @app.get("/metrics/recent_requests")
 def get_recent_requests(limit: int = 50, x_api_key: str | None = None) -> Dict[str, Any]:
     """获取最近的请求记录"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     monitor = get_monitor()
     
     return success_response(data={
@@ -999,7 +1018,7 @@ def get_recent_requests(limit: int = 50, x_api_key: str | None = None) -> Dict[s
 @app.get("/metrics/time_series")
 def get_time_series(interval_seconds: int = 60, x_api_key: str | None = None) -> Dict[str, Any]:
     """获取时间序列数据"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     monitor = get_monitor()
     
     return success_response(data={
@@ -1009,13 +1028,13 @@ def get_time_series(interval_seconds: int = 60, x_api_key: str | None = None) ->
 
 @app.post("/metrics/export")
 def export_metrics(filepath: str = "data/metrics/export.json", x_api_key: str | None = None) -> Dict[str, Any]:
-    """导出性能指标到文件"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """导出性能指标到文�?""
+    _require_api_key(x_api_key)
     monitor = get_monitor()
     
     try:
         monitor.export_metrics(filepath)
-        return success_response(data={"filepath": filepath, "message": "指标已导出"})
+        return success_response(data={"filepath": filepath, "message": "指标已导�?})
     except Exception as e:
         logger.error(f"导出指标失败: {e}")
         return error_response(message=str(e))
@@ -1024,11 +1043,11 @@ def export_metrics(filepath: str = "data/metrics/export.json", x_api_key: str | 
 @app.post("/metrics/clear")
 def clear_metrics(x_api_key: str | None = None) -> Dict[str, Any]:
     """清空性能监控数据"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     monitor = get_monitor()
     monitor.clear_history()
     
-    return success_response(data={"message": "监控数据已清空"})
+    return success_response(data={"message": "监控数据已清�?})
 
 
 # ==================== 文档管理增强 API ====================
@@ -1047,8 +1066,8 @@ class UpdateDocumentRequest(BaseModel):
 
 @app.post("/documents/metadata")
 def update_document_metadata(req: UpdateDocumentRequest, x_api_key: str | None = None) -> Dict[str, Any]:
-    """更新文档元数据"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """更新文档元数�?""
+    _require_api_key(x_api_key)
     
     try:
         update_data = {}
@@ -1066,18 +1085,18 @@ def update_document_metadata(req: UpdateDocumentRequest, x_api_key: str | None =
             "metadata": doc_manager.get_document(req.path)
         })
     except Exception as e:
-        logger.error(f"更新文档元数据失败: {e}")
+        logger.error(f"更新文档元数据失�? {e}")
         return error_response(message=str(e))
 
 
 @app.get("/documents/metadata/{path:path}")
 def get_document_metadata(path: str, x_api_key: str | None = None) -> Dict[str, Any]:
-    """获取文档元数据"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """获取文档元数�?""
+    _require_api_key(x_api_key)
     
     metadata = doc_manager.get_document(path)
     if not metadata:
-        return error_response(message="文档不存在", status_code=404)
+        return error_response(message="文档不存�?, status_code=404)
     
     return success_response(data=metadata)
 
@@ -1089,7 +1108,7 @@ def list_documents_with_metadata(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """列出文档（支持按分类和标签过滤）"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     tag_list = tags.split(",") if tags else None
     documents = doc_manager.list_documents(category=category, tags=tag_list)
@@ -1102,8 +1121,8 @@ def list_documents_with_metadata(
 
 @app.get("/documents/tags")
 def get_all_tags(x_api_key: str | None = None) -> Dict[str, Any]:
-    """获取所有标签"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """获取所有标�?""
+    _require_api_key(x_api_key)
     
     tags = doc_manager.metadata.get_all_tags()
     return success_response(data={"tags": tags, "count": len(tags)})
@@ -1111,8 +1130,8 @@ def get_all_tags(x_api_key: str | None = None) -> Dict[str, Any]:
 
 @app.get("/documents/categories")
 def get_all_categories(x_api_key: str | None = None) -> Dict[str, Any]:
-    """获取所有分类"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """获取所有分�?""
+    _require_api_key(x_api_key)
     
     categories = doc_manager.metadata.get_all_categories()
     return success_response(data={"categories": categories, "count": len(categories)})
@@ -1121,7 +1140,7 @@ def get_all_categories(x_api_key: str | None = None) -> Dict[str, Any]:
 @app.get("/documents/statistics")
 def get_document_statistics(x_api_key: str | None = None) -> Dict[str, Any]:
     """获取文档统计信息"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     stats = doc_manager.get_statistics()
     return success_response(data=stats)
@@ -1130,7 +1149,7 @@ def get_document_statistics(x_api_key: str | None = None) -> Dict[str, Any]:
 @app.post("/documents/{path:path}/tags")
 def add_document_tags(path: str, tags: List[str], x_api_key: str | None = None) -> Dict[str, Any]:
     """添加文档标签"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         doc_manager.metadata.add_tags(path, tags)
@@ -1146,7 +1165,7 @@ def add_document_tags(path: str, tags: List[str], x_api_key: str | None = None) 
 @app.delete("/documents/{path:path}/tags")
 def remove_document_tags(path: str, tags: List[str], x_api_key: str | None = None) -> Dict[str, Any]:
     """移除文档标签"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         doc_manager.metadata.remove_tags(path, tags)
@@ -1159,7 +1178,7 @@ def remove_document_tags(path: str, tags: List[str], x_api_key: str | None = Non
         return error_response(message=str(e))
 
 
-# ==================== 检索优化 API ====================
+# ==================== 检索优�?API ====================
 
 from backend.retrieval_optimizer import get_optimizer
 
@@ -1171,13 +1190,13 @@ def analyze_retrieval_quality(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """分析检索质量并提供优化建议"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
-        # 执行检索
+        # 执行检�?
         results = pipeline.vector_store.search(question, top_k=top_k)
         
-        # 转换为字典格式
+        # 转换为字典格�?
         results_dict = [
             {
                 "text": r.text,
@@ -1194,7 +1213,7 @@ def analyze_retrieval_quality(
         return success_response(data=analysis)
     
     except Exception as e:
-        logger.error(f"检索分析失败: {e}")
+        logger.error(f"检索分析失�? {e}")
         return error_response(message=str(e))
 
 
@@ -1203,8 +1222,8 @@ def suggest_optimal_weights(
     question: str,
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
-    """根据查询类型建议最佳权重"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """根据查询类型建议最佳权�?""
+    _require_api_key(x_api_key)
     
     try:
         optimizer = get_optimizer()
@@ -1233,11 +1252,11 @@ def suggest_optimal_weights(
 def _get_weight_explanation(vec_weight: float, bm25_weight: float) -> str:
     """解释权重选择"""
     if vec_weight > 0.7:
-        return "查询偏语义理解，使用高向量权重"
+        return "查询偏语义理解，使用高向量权�?
     elif bm25_weight > 0.6:
         return "查询偏关键词匹配，使用高 BM25 权重"
     else:
-        return "查询类型平衡，使用均衡权重"
+        return "查询类型平衡，使用均衡权�?
 
 
 @app.post("/retrieval/grid_search")
@@ -1246,13 +1265,13 @@ def grid_search_weights(
     top_k: int = 10,
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
-    """网格搜索最佳权重组合"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """网格搜索最佳权重组�?""
+    _require_api_key(x_api_key)
     
     try:
         optimizer = get_optimizer()
         
-        # 定义检索函数
+        # 定义检索函�?
         def retrieval_func(query, top_k, vector_weight, bm25_weight):
             # 临时修改权重
             old_vec = settings.rag_vec_weight
@@ -1293,28 +1312,28 @@ def compare_retrieval_strategies(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """比较不同检索策略的效果"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         strategies = []
         
-        # 策略 1: 纯向量检索
+        # 策略 1: 纯向量检�?
         old_bm25 = settings.rag_bm25_enabled
         settings.rag_bm25_enabled = False
         results_vec = pipeline.vector_store.search(question, top_k=top_k)
         settings.rag_bm25_enabled = old_bm25
         
         strategies.append({
-            "name": "纯向量检索",
+            "name": "纯向量检�?,
             "config": {"vector_weight": 1.0, "bm25_weight": 0.0},
             "avg_score": round(sum(r.score for r in results_vec) / len(results_vec), 4) if results_vec else 0,
             "result_count": len(results_vec)
         })
         
-        # 策略 2: 混合检索（默认权重）
+        # 策略 2: 混合检索（默认权重�?
         results_hybrid = pipeline.vector_store.search(question, top_k=top_k)
         strategies.append({
-            "name": "混合检索（默认）",
+            "name": "混合检索（默认�?,
             "config": {
                 "vector_weight": settings.rag_vec_weight,
                 "bm25_weight": settings.rag_bm25_weight
@@ -1368,8 +1387,8 @@ def analyze_query_intent(
     question: str,
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
-    """分析查询意图并提供优化建议"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """分析查询意图并提供优化建�?""
+    _require_api_key(x_api_key)
     
     try:
         analyzer = get_query_analyzer()
@@ -1389,8 +1408,8 @@ def smart_search_with_intent(
     use_recommended_config: bool = True,
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
-    """基于意图识别的智能检索"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """基于意图识别的智能检�?""
+    _require_api_key(x_api_key)
     
     try:
         # 分析查询意图
@@ -1401,7 +1420,7 @@ def smart_search_with_intent(
         config = analysis["recommended_config"]
         
         if use_recommended_config:
-            # 使用推荐的配置
+            # 使用推荐的配�?
             actual_top_k = top_k or config["top_k"]
             
             # 临时修改配置
@@ -1411,7 +1430,7 @@ def smart_search_with_intent(
             settings.rag_vec_weight = config["vector_weight"]
             settings.rag_bm25_weight = config["bm25_weight"]
             
-            # 执行检索
+            # 执行检�?
             results = pipeline.vector_store.search(question, top_k=actual_top_k)
             
             # 恢复配置
@@ -1441,7 +1460,7 @@ def smart_search_with_intent(
         })
     
     except Exception as e:
-        logger.error(f"智能检索失败: {e}")
+        logger.error(f"智能检索失�? {e}")
         return error_response(message=str(e))
 
 
@@ -1451,7 +1470,7 @@ def batch_analyze_queries(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """批量分析查询意图"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         analyzer = get_query_analyzer()
@@ -1490,8 +1509,8 @@ from backend.cache_optimizer import get_smart_cache, CachePrewarmer
 
 @app.get("/cache/analyze")
 def analyze_cache(x_api_key: str | None = None) -> Dict[str, Any]:
-    """分析缓存性能并提供优化建议"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """分析缓存性能并提供优化建�?""
+    _require_api_key(x_api_key)
     
     try:
         smart_cache = get_smart_cache()
@@ -1512,17 +1531,17 @@ def prewarm_cache(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """缓存预热"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
-        # 定义检索函数
+        # 定义检索函�?
         def retrieval_func(query: str):
             return pipeline.vector_store.search(query, top_k=10)
         
         prewarmer = CachePrewarmer(retrieval_func)
         results = {"prewarmed_queries": []}
         
-        # 从热门查询预热
+        # 从热门查询预�?
         if use_hot_queries:
             from backend.performance_monitor import get_monitor
             monitor = get_monitor()
@@ -1551,7 +1570,7 @@ def prewarm_cache(
 @app.get("/cache/smart_stats")
 def get_smart_cache_stats(x_api_key: str | None = None) -> Dict[str, Any]:
     """获取智能缓存统计"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         smart_cache = get_smart_cache()
@@ -1559,7 +1578,7 @@ def get_smart_cache_stats(x_api_key: str | None = None) -> Dict[str, Any]:
         
         # 添加详细信息
         cache_entries = []
-        for key, entry in list(smart_cache.cache.items())[:10]:  # 只返回前 10 个
+        for key, entry in list(smart_cache.cache.items())[:10]:  # 只返回前 10 �?
             cache_entries.append({
                 "key": key[:16] + "...",  # 截断显示
                 "hits": entry.hits,
@@ -1581,7 +1600,7 @@ def get_smart_cache_stats(x_api_key: str | None = None) -> Dict[str, Any]:
 @app.post("/cache/optimize")
 def optimize_cache_config(x_api_key: str | None = None) -> Dict[str, Any]:
     """优化缓存配置"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         smart_cache = get_smart_cache()
@@ -1601,24 +1620,24 @@ def optimize_cache_config(x_api_key: str | None = None) -> Dict[str, Any]:
             "actions": []
         }
         
-        # 命中率低，建议增加容量
+        # 命中率低，建议增加容�?
         if hit_rate < 0.3:
             new_max_size = int(max_size * 1.5)
             recommendations["recommended_config"]["max_size"] = new_max_size
-            recommendations["actions"].append(f"增加缓存容量到 {new_max_size}")
+            recommendations["actions"].append(f"增加缓存容量�?{new_max_size}")
         
-        # 空间利用率高，建议增加容量
+        # 空间利用率高，建议增加容�?
         utilization = current_size / max_size if max_size > 0 else 0
         if utilization > 0.9:
             new_max_size = int(max_size * 1.3)
             recommendations["recommended_config"]["max_size"] = new_max_size
-            recommendations["actions"].append(f"增加缓存容量到 {new_max_size}")
+            recommendations["actions"].append(f"增加缓存容量�?{new_max_size}")
         
-        # 空间利用率低，建议减少容量
+        # 空间利用率低，建议减少容�?
         if utilization < 0.2 and max_size > 100:
             new_max_size = max(100, int(max_size * 0.7))
             recommendations["recommended_config"]["max_size"] = new_max_size
-            recommendations["actions"].append(f"减少缓存容量到 {new_max_size}")
+            recommendations["actions"].append(f"减少缓存容量�?{new_max_size}")
         
         if not recommendations["actions"]:
             recommendations["actions"].append("当前配置良好，无需调整")
@@ -1646,7 +1665,7 @@ def run_benchmark_test(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """运行基准测试"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         evaluator = get_evaluator(pipeline)
@@ -1691,8 +1710,8 @@ def test_retrieval_quality(
     top_k: int = 10,
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
-    """测试单个查询的检索质量"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """测试单个查询的检索质�?""
+    _require_api_key(x_api_key)
     
     try:
         evaluator = get_evaluator(pipeline)
@@ -1707,7 +1726,7 @@ def test_retrieval_quality(
         return success_response(data=results)
     
     except Exception as e:
-        logger.error(f"检索测试失败: {e}")
+        logger.error(f"检索测试失�? {e}")
         return error_response(message=str(e))
 
 
@@ -1717,8 +1736,8 @@ def test_answer_quality(
     expected_keywords: Optional[List[str]] = None,
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
-    """测试单个查询的答案质量"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """测试单个查询的答案质�?""
+    _require_api_key(x_api_key)
     
     try:
         evaluator = get_evaluator(pipeline)
@@ -1743,8 +1762,8 @@ def save_test_cases_to_file(
     filepath: str = "data/evaluation/test_cases.json",
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
-    """保存测试用例到文件"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """保存测试用例到文�?""
+    _require_api_key(x_api_key)
     
     try:
         cases = [
@@ -1763,7 +1782,7 @@ def save_test_cases_to_file(
         return success_response(data={
             "filepath": filepath,
             "count": len(cases),
-            "message": "测试用例已保存"
+            "message": "测试用例已保�?
         })
     
     except Exception as e:
@@ -1776,8 +1795,8 @@ def load_test_cases_from_file(
     filepath: str = "data/evaluation/test_cases.json",
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
-    """从文件加载测试用例"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """从文件加载测试用�?""
+    _require_api_key(x_api_key)
     
     try:
         cases = TestCaseGenerator.load_from_file(filepath)
@@ -1817,12 +1836,12 @@ def build_knowledge_graph(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """构建知识图谱"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         # 获取文档
         if doc_paths:
-            # 从指定路径加载
+            # 从指定路径加�?
             documents = []
             for path in doc_paths:
                 # 从向量存储中获取文档
@@ -1834,10 +1853,10 @@ def build_knowledge_graph(
                             "path": r.meta.get("path", "")
                         })
         else:
-            # 使用所有文档
+            # 使用所有文�?
             documents = []
-            # 这里简化处理，实际应该从向量存储中获取所有文档
-            logger.info("使用向量存储中的所有文档构建知识图谱")
+            # 这里简化处理，实际应该从向量存储中获取所有文�?
+            logger.info("使用向量存储中的所有文档构建知识图�?)
         
         # 构建图谱
         builder = KnowledgeGraphBuilder()
@@ -1862,7 +1881,7 @@ def build_knowledge_graph(
 @app.get("/kg/statistics")
 def get_kg_statistics(x_api_key: str | None = None) -> Dict[str, Any]:
     """获取知识图谱统计信息"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         kg = get_knowledge_graph()
@@ -1881,19 +1900,19 @@ def get_entity_info(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """获取实体信息"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         kg = get_knowledge_graph()
         entity = kg.get_entity(entity_name)
         
         if not entity:
-            return error_response(message="实体不存在", status_code=404)
+            return error_response(message="实体不存�?, status_code=404)
         
         return success_response(data={
             "name": entity.name,
             "type": entity.type,
-            "mentions": entity.mentions[:10],  # 最多返回 10 个
+            "mentions": entity.mentions[:10],  # 最多返�?10 �?
             "doc_paths": entity.doc_paths,
             "doc_count": len(entity.doc_paths),
             "attributes": entity.attributes
@@ -1911,7 +1930,7 @@ def get_entity_subgraph(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """获取实体子图"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         kg = get_knowledge_graph()
@@ -1932,7 +1951,7 @@ def search_entities(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """搜索实体"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         kg = get_knowledge_graph()
@@ -1967,7 +1986,7 @@ def find_entity_path(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """查找实体路径"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         kg = get_knowledge_graph()
@@ -1976,7 +1995,7 @@ def find_entity_path(
         return success_response(data={
             "start": start,
             "end": end,
-            "paths": paths[:5],  # 最多返回 5 条路径
+            "paths": paths[:5],  # 最多返�?5 条路�?
             "path_count": len(paths)
         })
     
@@ -1992,8 +2011,8 @@ def graph_enhanced_search(
     use_graph_expansion: bool = True,
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
-    """图谱增强检索"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    """图谱增强检�?""
+    _require_api_key(x_api_key)
     
     try:
         kg = get_knowledge_graph()
@@ -2007,13 +2026,13 @@ def graph_enhanced_search(
         # 获取相关实体
         related_entities = retriever.get_related_entities(question)
         
-        # 执行检索
+        # 执行检�?
         all_results = []
-        for query in expanded_queries[:3]:  # 最多使用 3 个扩展查询
+        for query in expanded_queries[:3]:  # 最多使�?3 个扩展查�?
             results = pipeline.vector_store.search(query, top_k=top_k)
             all_results.extend(results)
         
-        # 去重并排序
+        # 去重并排�?
         seen = set()
         unique_results = []
         for r in all_results:
@@ -2037,7 +2056,7 @@ def graph_enhanced_search(
         })
     
     except Exception as e:
-        logger.error(f"图谱增强检索失败: {e}")
+        logger.error(f"图谱增强检索失�? {e}")
         return error_response(message=str(e))
 
 
@@ -2047,7 +2066,7 @@ def export_knowledge_graph(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """导出知识图谱"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         kg = get_knowledge_graph()
@@ -2055,7 +2074,7 @@ def export_knowledge_graph(
         
         return success_response(data={
             "filepath": filepath,
-            "message": "知识图谱已导出"
+            "message": "知识图谱已导�?
         })
     
     except Exception as e:
@@ -2069,7 +2088,7 @@ def import_knowledge_graph(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     """导入知识图谱"""
-    _require_api_key({"x-api-key": x_api_key} if x_api_key else {})
+    _require_api_key(x_api_key)
     
     try:
         kg = get_knowledge_graph()
@@ -2079,12 +2098,18 @@ def import_knowledge_graph(
         
         return success_response(data={
             "filepath": filepath,
-            "message": "知识图谱已导入",
+            "message": "知识图谱已导�?,
             "statistics": stats
         })
     
     except Exception as e:
         logger.error(f"导入知识图谱失败: {e}")
         return error_response(message=str(e))
+
+
+
+
+
+
 
 
