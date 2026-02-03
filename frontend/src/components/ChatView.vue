@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <section class="chat">
     <div class="messages" ref="messagesEl">
       <div v-if="conversation.length === 0" class="empty-state">
@@ -63,7 +63,7 @@
           </button>
           
           <div v-if="showModelDropdown" class="model-dropdown">
-            <div class="dropdown-header">选择模型</div>
+            <div class="dropdown-header">Select model</div>
             <div 
               v-for="model in availableModels" 
               :key="model.value" 
@@ -96,7 +96,7 @@
             <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-        <button v-else class="send-btn danger" @click="stopGeneration" title="停止输出">
+        <button v-else class="send-btn danger" @click="stopGeneration" title="Stop">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <rect x="6" y="6" width="12" height="12" rx="2" stroke="currentColor" stroke-width="2"/>
           </svg>
@@ -123,10 +123,10 @@ const selectedModel = ref('deepseek-chat');
 let currentAbortController = null;
 const showModelDropdown = ref(false);
 const availableModels = ref([
-  { value: 'deepseek-chat', name: 'DeepSeek', icon: '🚀', desc: '高性价比推理' },
-  { value: 'qwen-turbo', name: 'Qwen Turbo', icon: '⚡', desc: '极速响应' },
-  { value: 'qwen-plus', name: 'Qwen Plus', icon: '✨', desc: '平衡性能' },
-  { value: 'qwen-max', name: 'Qwen Max', icon: '🎯', desc: '旗舰模型' }
+  { value: 'deepseek-chat', name: 'DeepSeek', icon: 'DS', desc: 'Balanced quality and speed' },
+  { value: 'qwen-turbo', name: 'Qwen Turbo', icon: 'QT', desc: 'Fast responses' },
+  { value: 'qwen-plus', name: 'Qwen Plus', icon: 'QP', desc: 'Better reasoning' },
+  { value: 'qwen-max', name: 'Qwen Max', icon: 'QM', desc: 'Highest capability' }
 ]);
 
 watch(question, () => {
@@ -170,9 +170,7 @@ function getModelNameByValue(value) {
 }
 
 function toggleModelDropdown() {
-  console.log('toggleModelDropdown called, current:', showModelDropdown.value);
   showModelDropdown.value = !showModelDropdown.value;
-  console.log('toggleModelDropdown after, new:', showModelDropdown.value);
 }
 
 function selectModelAndClose(modelValue) {
@@ -221,6 +219,7 @@ async function sendQuestion() {
   // 从 localStorage 获取系统提示词
   const settings = JSON.parse(localStorage.getItem('app-settings') || '{}');
   const systemPrompt = settings.systemPrompt;
+  const topK = Number.isFinite(settings.topK) ? settings.topK : 4;
   
   try {
     // 若上一次流还未结束，先中止
@@ -228,7 +227,19 @@ async function sendQuestion() {
       currentAbortController.abort();
     }
     currentAbortController = new AbortController();
-    const res = await api.askStream(q, model, 4, systemPrompt, currentAbortController.signal);
+    const res = await api.askStream(
+      q,
+      model,
+      topK,
+      systemPrompt,
+      null,
+      null,
+      currentAbortController.signal
+    );
+    if (!res.ok || !res.body) {
+      const errorText = await res.text();
+      throw new Error(errorText || `Request failed with status ${res.status}`);
+    }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let answer = '';
@@ -242,34 +253,40 @@ async function sendQuestion() {
       buffer += chunk;
       const lines = buffer.split('\n\n');
       
-      // 保留最后一个可能不完整的行
+      // 保留最后一个可能不完整的块
       buffer = lines.pop() || '';
       
       for (const line of lines) {
         if (!line) continue;
-        if (line.startsWith('data: ')) {
-          const token = line.slice(6);
-          
-          // 逐字输出效果：将 token 拆分成单个字符
-          // 如果 token 很短（如单个字符），直接显示
-          // 如果 token 较长，逐字显示以产生流畅的打字机效果
-          if (token.length <= 2) {
-            answer += token;
+        let eventType = 'message';
+        let dataPayload = '';
+        for (const part of line.split('\n')) {
+          if (part.startsWith('event: ')) {
+            eventType = part.slice(7).trim();
+            continue;
+          }
+          if (part.startsWith('data: ')) {
+            dataPayload = part.slice(6);
+          }
+        }
+        if (!dataPayload) continue;
+        if (eventType === 'source' || eventType === 'meta' || eventType === 'done') {
+          continue;
+        }
+        const token = dataPayload;
+
+        if (token.length <= 2) {
+          answer += token;
+          streamingContent.value = answer;
+          await nextTick();
+          scrollToBottom();
+        } else {
+          for (const char of token) {
+            answer += char;
             streamingContent.value = answer;
             await nextTick();
             scrollToBottom();
-          } else {
-            // 对于较长的 token，逐字显示
-            for (const char of token) {
-              answer += char;
-              streamingContent.value = answer;
-              await nextTick();
-              scrollToBottom();
-              
-              // 添加极小的延迟以产生流畅效果，但不会太慢
-              // 注释掉这行可以获得更快的输出速度
-              await new Promise(resolve => setTimeout(resolve, 5));
-            }
+            await new Promise(resolve => setTimeout(resolve, 5));
           }
         }
       }
@@ -279,7 +296,7 @@ async function sendQuestion() {
   } catch (e) {
     console.error(e);
     if (e.name === 'AbortError') {
-      // 用户主动停止，无消息追加
+      // 用户主动停止，无需追加消息
     } else {
       emit('new-message', { role: 'assistant', model, content: '请求失败: ' + e.message, ts: Date.now() });
     }
@@ -304,16 +321,17 @@ async function loadAvailableModels() {
     const res = await api.getModels();
     if (res.data.ok) {
       const modelConfigMap = {
-        'deepseek-chat': { name: 'DeepSeek Chat', icon: '🚀' },
-        'qwen-turbo': { name: 'Qwen Turbo', icon: '⚡' },
-        'qwen-plus': { name: 'Qwen Plus', icon: '✨' },
-        'qwen-max': { name: 'Qwen Max', icon: '🎯' }
+        'deepseek-chat': { name: 'DeepSeek Chat', icon: 'DS', desc: 'Balanced quality and speed' },
+        'qwen-turbo': { name: 'Qwen Turbo', icon: 'QT', desc: 'Fast responses' },
+        'qwen-plus': { name: 'Qwen Plus', icon: 'QP', desc: 'Better reasoning' },
+        'qwen-max': { name: 'Qwen Max', icon: 'QM', desc: 'Highest capability' }
       };
       
       availableModels.value = res.data.models.map(model => ({
         value: model,
         name: modelConfigMap[model]?.name || model,
-        icon: modelConfigMap[model]?.icon || '🔮'
+        icon: modelConfigMap[model]?.icon || 'LLM',
+        desc: modelConfigMap[model]?.desc || ''
       }));
       
       // 从 localStorage 恢复上次选择的模型
@@ -446,7 +464,7 @@ onMounted(() => {
 .msg-content {
   flex: 1;
   min-width: 0;
-  max-width: 70%; /* 限制消息宽度，不要占满整行 */
+  max-width: 70%; /* 限制消息宽度，避免占满整行 */
 }
 
 .message.user .msg-content {
@@ -513,7 +531,7 @@ onMounted(() => {
   word-wrap: break-word;
 }
 
-/* 确保 Markdown 渲染内容在深色模式下可见 */
+/* 确保 Markdown 在深色模式下可见 */
 .msg-text :where(p, ul, ol, li, h1, h2, h3, h4, h5, h6, strong, em, span) {
   color: var(--text-primary) !important;
 }
@@ -548,7 +566,7 @@ onMounted(() => {
 }
 
 .composer {
-  flex-shrink: 0; /* 输入框不会被压缩 */
+  flex-shrink: 0; /* 输入框不被压缩 */
   border-top: 1px solid var(--border-primary);
   padding: 16px 24px 24px;
   background: var(--bg-primary);
@@ -643,7 +661,13 @@ onMounted(() => {
 }
 
 .model-icon {
-  font-size: 14px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -722,7 +746,13 @@ onMounted(() => {
 }
 
 .option-icon {
-  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1;
 }
 

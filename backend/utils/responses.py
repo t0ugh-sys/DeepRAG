@@ -10,11 +10,17 @@ def success_response(data: Any = None, message: str = "success") -> JSONResponse
         "data": data
     })
 
-def error_response(error: str, status_code: int = 400, details: Optional[dict] = None) -> JSONResponse:
+def error_response(
+    error: Optional[str] = None,
+    status_code: int = 400,
+    details: Optional[dict] = None,
+    message: Optional[str] = None
+) -> JSONResponse:
     """错误响应"""
+    resolved_error = error or message or "error"
     content = {
         "ok": False,
-        "error": error
+        "error": resolved_error
     }
     if details:
         content["details"] = details

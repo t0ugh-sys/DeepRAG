@@ -67,6 +67,16 @@ class TestResponses:
         assert body["ok"] is False
         assert body["error"] == "发生错误"
     
+    def test_error_response_message_alias(self):
+        """娴嬭瘯 message 鍙傛暟鍏煎"""
+        response = error_response(message="error message", status_code=400)
+        assert response.status_code == 400
+
+        import json
+        body = json.loads(response.body)
+        assert body["ok"] is False
+        assert body["error"] == "error message"
+
     def test_error_response_with_details(self):
         """测试带详情的错误响应"""
         response = error_response(
