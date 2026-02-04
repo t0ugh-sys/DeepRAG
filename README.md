@@ -1,4 +1,4 @@
-﻿# DeepRAG - 企业级 RAG 知识库系统
+# DeepRAG - 企业级 RAG 知识库系统
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-green.svg)](https://fastapi.tiangolo.com/)
@@ -63,6 +63,10 @@
 conda create -n rag-env python=3.10 -y
 conda activate rag-env
 pip install -r backend/requirements.txt
+
+# 说明：必须先激活环境再安装依赖
+# 如果是非交互/脚本环境，可用：
+# conda run -n rag-env python -m pip install -r backend/requirements.txt
 
 # 可选：安装 Tesseract OCR（用于图片识别）
 # Windows: 下载安装 https://github.com/UB-Mannheim/tesseract/wiki

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <section class="chat">
     <div class="messages" ref="messagesEl">
       <div v-if="conversation.length === 0" class="empty-state">
