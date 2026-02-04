@@ -33,22 +33,20 @@ class VectorStore:
     """Vector store wrapper for Milvus/FAISS / 向量存储封装。"""
 
     def __init__(self, meta_path: str, embedding_model: str, settings: Settings, namespace: str | None = None) -> None:
-        if not os.path.exists(meta_path):
-            raise FileNotFoundError(
-                "meta.jsonl not found. Run ingest first / 未找到 meta.jsonl，请先执行 ingest"
-            )
-
         self.settings = settings
         self.namespace = namespace or settings.default_namespace
         self.texts: List[str] = []
         self.metas: List[Dict[str, Any]] = []
         self.meta_path = meta_path
-
-        with open(meta_path, "r", encoding="utf-8") as f:
-            for line in f:
-                rec = json.loads(line)
-                self.texts.append(rec["text"])
-                self.metas.append(rec["meta"])
+        os.makedirs(os.path.dirname(meta_path), exist_ok=True)
+        self._meta_loaded = False
+        if os.path.exists(meta_path):
+            with open(meta_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    rec = json.loads(line)
+                    self.texts.append(rec["text"])
+                    self.metas.append(rec["meta"])
+            self._meta_loaded = True
 
         self.embedder = SentenceTransformer(embedding_model)
         self._bm25_tokenized = [self._tokenize(t) for t in self.texts]
@@ -79,17 +77,17 @@ class VectorStore:
         if self.collection is None:
             faiss_path = os.path.join(os.path.dirname(meta_path), "faiss.index")
             self.faiss_path = faiss_path
-            if not os.path.exists(faiss_path):
-                raise FileNotFoundError(
-                    "faiss.index not found. Run ingest first / 未找到 faiss.index，请先执行 ingest"
-                )
             try:
                 import faiss  # type: ignore
             except Exception as exc:  # pragma: no cover
                 raise RuntimeError(
                     "FAISS not installed. Install faiss-cpu in your env / 未安装 FAISS，请在环境中安装 faiss-cpu"
                 ) from exc
-            self.faiss_index = faiss.read_index(faiss_path)
+            if os.path.exists(faiss_path):
+                self.faiss_index = faiss.read_index(faiss_path)
+            else:
+                dim = int(self.embedder.get_sentence_embedding_dimension())
+                self.faiss_index = faiss.IndexFlatIP(dim)
 
     def _expand_query(self, query: str) -> str:
         """Expand query by keywords / 关键词扩展。"""
@@ -102,6 +100,8 @@ class VectorStore:
             return query
 
     def search(self, query: str, top_k: int = 4) -> List[RetrievedChunk]:
+        if not self.texts and self.collection is None and self.faiss_index is None:
+            return []
         expanded_query = self._expand_query(query)
         vec = self.embedder.encode([expanded_query], normalize_embeddings=True)
         vec = np.array(vec).astype("float32")[0]
@@ -122,7 +122,8 @@ class VectorStore:
                 results.append(RetrievedChunk(text=hit.entity.get("text"), score=float(hit.distance), meta=meta))
             return _apply_score_threshold(_dedupe_results(results), self.settings.score_threshold)
 
-        assert self.faiss_index is not None
+        if self.faiss_index is None:
+            return []
         import faiss  # type: ignore
 
         scores, indices = self.faiss_index.search(vec.reshape(1, -1), top_k)
