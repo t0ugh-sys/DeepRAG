@@ -1,4 +1,5 @@
 from typing import List, Any, Dict, Optional
+import os
 import time
 from contextlib import asynccontextmanager
 from threading import Lock
@@ -12,11 +13,13 @@ from sentence_transformers import SentenceTransformer as _ST
 from pydantic import BaseModel
 
 from backend.config import Settings
+from backend.ingest import load_documents, build_index
 from backend.rag import RAGPipeline, RetrievedChunk
 from backend.utils.logger import logger
 from backend.utils.middleware import RequestLoggingMiddleware, get_current_request
 from backend.utils.responses import success_response, error_response
 from backend.utils.cache import query_cache
+from backend.document_manager import get_document_manager
 from backend.performance_monitor import get_monitor, RequestTimer
 
 settings = Settings()
@@ -26,6 +29,24 @@ _pipeline_lock = Lock()
 cors_origins = [o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()]
 cors_methods = [m.strip() for m in settings.cors_allow_methods.split(",") if m.strip()]
 cors_headers = [h.strip() for h in settings.cors_allow_headers.split(",") if h.strip()]
+
+
+def _ensure_index_ready() -> None:
+    meta_path = os.path.join(settings.index_dir, "meta.jsonl")
+    if os.path.exists(meta_path) and os.path.getsize(meta_path) > 0:
+        return
+
+    logger.info("Index missing, starting auto-ingest / 索引缺失，开始自动入库")
+    docs = load_documents(settings.docs_dir)
+    if not docs:
+        logger.warning("No documents found to ingest / 未找到可入库文档")
+        return
+
+    build_index(docs, settings, settings.index_dir)
+    doc_manager = get_document_manager()
+    for doc in docs:
+        doc_manager.add_document(doc["path"], content=doc.get("text", ""))
+    logger.info("Auto-ingest completed / 自动入库完成")
 
 def _get_pipeline(ns: str) -> RAGPipeline:
     with _pipeline_lock:
@@ -42,6 +63,7 @@ async def lifespan(app: FastAPI):
     global pipelines
     try:
         logger.info("RAG pipeline info / RAG 流水线信息")
+        _ensure_index_ready()
         pipeline = _get_pipeline(settings.default_namespace)
         logger.info("RAG pipeline info / RAG 流水线信息")
     except Exception as e:
@@ -788,6 +810,7 @@ async def upsert_doc(
         
         final_path = final_path.replace("\\", "/")
         added = local.add_document(final_path, text or "")
+        doc_manager.update_document(final_path, chunk_count=added)
         logger.info(f"RAG pipeline info / RAG 流水线信息: {final_path} {added}")
         return JSONResponse({"ok": True, "added_chunks": added})
     except Exception as e:
@@ -806,6 +829,7 @@ def delete_doc(path: str, x_api_key: str | None = None, namespace: str | None = 
     local = _get_pipeline(ns)
     try:
         deleted = local.delete_document(path)
+        doc_manager.delete_document(path)
         return JSONResponse({"ok": True, "deleted": deleted})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
@@ -1011,8 +1035,6 @@ def clear_metrics(x_api_key: str | None = None) -> Dict[str, Any]:
 
 
 
-from backend.document_manager import get_document_manager
-
 doc_manager = get_document_manager()
 
 
@@ -1065,13 +1087,43 @@ def list_documents_with_metadata(
     x_api_key: str | None = None
 ) -> Dict[str, Any]:
     _require_api_key(x_api_key)
-    
-    tag_list = tags.split(",") if tags else None
-    documents = doc_manager.list_documents(category=category, tags=tag_list)
-    
+    tag_list = [t for t in tags.split(",") if t.strip()] if tags else None
+
+    if pipeline is None:
+        documents = doc_manager.list_documents(category=category, tags=tag_list)
+        return success_response(data={
+            "documents": documents,
+            "count": len(documents)
+        })
+
+    local = _get_pipeline(settings.default_namespace)
+    docs_stats = local.list_paths_with_stats(limit=10000)
+
+    merged: List[Dict[str, Any]] = []
+    for stat in docs_stats:
+        path = stat.get("path", "")
+        meta = doc_manager.get_document(path) or {}
+        entry = {
+            "path": path,
+            "chunk_count": stat.get("chunk_count", 0),
+            "last_updated": stat.get("last_updated"),
+            "tags": meta.get("tags", []),
+            "category": meta.get("category", ""),
+            "description": meta.get("description", ""),
+        }
+
+        if category and entry["category"] != category:
+            continue
+        if tag_list:
+            tags_set = set(entry.get("tags", []))
+            if not tags_set.intersection(tag_list):
+                continue
+
+        merged.append(entry)
+
     return success_response(data={
-        "documents": documents,
-        "count": len(documents)
+        "documents": merged,
+        "count": len(merged)
     })
 
 
@@ -1980,10 +2032,3 @@ def import_knowledge_graph(
     except Exception as e:
         logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
         return error_response(message=str(e))
-
-
-
-
-
-
-

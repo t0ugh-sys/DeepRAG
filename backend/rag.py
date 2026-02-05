@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from openai import OpenAI
+import httpx
 from pymilvus import Collection, connections
 from rank_bm25 import BM25Okapi  # type: ignore
 from sentence_transformers import SentenceTransformer
@@ -41,11 +42,16 @@ class VectorStore:
         os.makedirs(os.path.dirname(meta_path), exist_ok=True)
         self._meta_loaded = False
         if os.path.exists(meta_path):
-            with open(meta_path, "r", encoding="utf-8") as f:
+            with open(meta_path, "r", encoding="utf-8-sig") as f:
                 for line in f:
-                    rec = json.loads(line)
-                    self.texts.append(rec["text"])
-                    self.metas.append(rec["meta"])
+                    if not line.strip():
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    self.texts.append(rec.get("text", ""))
+                    self.metas.append(rec.get("meta", {}))
             self._meta_loaded = True
 
         self.embedder = SentenceTransformer(embedding_model)
@@ -390,12 +396,13 @@ class RAGPipeline:
         meta_path = os.path.join(settings.index_dir, "meta.jsonl")
         self.store = VectorStore(meta_path, settings.embedding_model_name, settings, namespace)
 
-        client_kwargs: Dict[str, Any] = {}
+        self.client = None
         if settings.openai_api_key:
-            client_kwargs["api_key"] = settings.openai_api_key
-        if settings.openai_base_url:
-            client_kwargs["base_url"] = settings.openai_base_url
-        self.client = OpenAI(**client_kwargs)
+            client_kwargs: Dict[str, Any] = {"api_key": settings.openai_api_key}
+            if settings.openai_base_url:
+                client_kwargs["base_url"] = settings.openai_base_url
+            client_kwargs["http_client"] = httpx.Client(trust_env=False)
+            self.client = OpenAI(**client_kwargs)
 
         self.qwen_client = None
         if settings.qwen_api_key:
@@ -403,6 +410,7 @@ class RAGPipeline:
                 "api_key": settings.qwen_api_key,
                 "base_url": settings.qwen_base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1",
             }
+            qwen_kwargs["http_client"] = httpx.Client(trust_env=False)
             self.qwen_client = OpenAI(**qwen_kwargs)
 
         self.reranker = None
@@ -430,6 +438,8 @@ class RAGPipeline:
             if self.qwen_client is None:
                 raise ValueError("Qwen client not configured / 未配置 QWEN_API_KEY")
             return self.qwen_client
+        if self.client is None:
+            raise ValueError("OpenAI client not configured / 未配置 OPENAI_API_KEY")
         return self.client
 
     def ask(

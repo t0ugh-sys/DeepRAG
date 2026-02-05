@@ -119,11 +119,12 @@ const loading = ref(false);
 const streamingContent = ref('');
 const messagesEl = ref(null);
 const textareaEl = ref(null);
-const selectedModel = ref('deepseek-chat');
+const selectedModel = ref('deepseek-reasoner');
 let currentAbortController = null;
 const showModelDropdown = ref(false);
 const availableModels = ref([
-  { value: 'deepseek-chat', name: 'DeepSeek', icon: 'DS', desc: 'Balanced quality and speed' },
+  { value: 'deepseek-reasoner', name: 'DeepSeek Reasoner', icon: 'DR', desc: 'Stronger reasoning' },
+  { value: 'deepseek-chat', name: 'DeepSeek Chat', icon: 'DS', desc: 'Balanced quality and speed' },
   { value: 'qwen-turbo', name: 'Qwen Turbo', icon: 'QT', desc: 'Fast responses' },
   { value: 'qwen-plus', name: 'Qwen Plus', icon: 'QP', desc: 'Better reasoning' },
   { value: 'qwen-max', name: 'Qwen Max', icon: 'QM', desc: 'Highest capability' }
@@ -321,6 +322,7 @@ async function loadAvailableModels() {
     const res = await api.getModels();
     if (res.data.ok) {
       const modelConfigMap = {
+        'deepseek-reasoner': { name: 'DeepSeek Reasoner', icon: 'DR', desc: 'Stronger reasoning' },
         'deepseek-chat': { name: 'DeepSeek Chat', icon: 'DS', desc: 'Balanced quality and speed' },
         'qwen-turbo': { name: 'Qwen Turbo', icon: 'QT', desc: 'Fast responses' },
         'qwen-plus': { name: 'Qwen Plus', icon: 'QP', desc: 'Better reasoning' },
@@ -934,4 +936,3 @@ textarea::-webkit-scrollbar-thumb {
   color: #6b7280;
 }
 </style>
-

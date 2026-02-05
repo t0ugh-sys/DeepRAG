@@ -183,7 +183,7 @@ async function loadDocuments() {
       tags: selectedTag.value || undefined
     });
     if (res.data.ok) {
-      const docs = res.data.documents || [];
+      const docs = res.data.data?.documents || [];
       documents.value = docs.map(doc => ({
         path: doc.path,
         chunks: doc.chunk_count || 0,
@@ -203,10 +203,10 @@ async function loadFilters() {
   try {
     const [tagsRes, categoriesRes] = await Promise.all([api.listTags(), api.listCategories()]);
     if (tagsRes.data.ok) {
-      tags.value = tagsRes.data.tags || [];
+      tags.value = tagsRes.data.data?.tags || [];
     }
     if (categoriesRes.data.ok) {
-      categories.value = categoriesRes.data.categories || [];
+      categories.value = categoriesRes.data.data?.categories || [];
     }
   } catch (e) {
     console.error('加载文档筛选项失败:', e);
@@ -652,7 +652,6 @@ onMounted(async () => {
   word-wrap: break-word;
 }
 </style>
-
 
 
 

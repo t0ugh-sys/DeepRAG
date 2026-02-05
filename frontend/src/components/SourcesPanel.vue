@@ -210,7 +210,7 @@ async function uploadBatch() {
       const text = await file.text();
       
       // 构造文档路径：使用文件名作为标识
-      const docPath = `knowledge/${file.name}`;
+    const docPath = `data/docs/${file.name}`;
       
       // 上传文档
       const res = await api.uploadDoc({ 
@@ -474,4 +474,3 @@ h4 {
   color: #dc2626;
 }
 </style>
-

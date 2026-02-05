@@ -132,7 +132,7 @@ async function uploadFiles() {
     try {
       const text = await file.text();
       const res = await api.uploadDoc({ 
-        path: `knowledge/${file.name}`, 
+        path: `data/docs/${file.name}`, 
         text: text 
       });
       
@@ -439,4 +439,3 @@ async function uploadFiles() {
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 </style>
-

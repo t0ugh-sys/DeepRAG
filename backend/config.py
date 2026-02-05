@@ -103,7 +103,7 @@ class Settings:
 
         self.openai_api_key = self.openai_api_key or os.getenv('OPENAI_API_KEY')
         self.openai_base_url = self.openai_base_url or os.getenv('OPENAI_BASE_URL')
-        self.llm_model = self.llm_model or os.getenv('RAG_MODEL', 'deepseek-chat')
+        self.llm_model = self.llm_model or os.getenv('RAG_MODEL', 'deepseek-reasoner')
 
         self.qwen_api_key = self.qwen_api_key or os.getenv('QWEN_API_KEY')
         self.qwen_base_url = self.qwen_base_url or os.getenv(
@@ -111,7 +111,7 @@ class Settings:
         )
 
         self.available_models = self.available_models or os.getenv(
-            'AVAILABLE_MODELS', 'deepseek-chat,qwen-turbo,qwen-plus,qwen-max'
+            'AVAILABLE_MODELS', 'deepseek-reasoner,deepseek-chat,qwen-turbo,qwen-plus,qwen-max'
         )
 
         if self.top_k is None:

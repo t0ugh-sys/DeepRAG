@@ -466,7 +466,7 @@ import api from '../api';
 const emit = defineEmits(['close', 'settings-changed']);
 
 const settings = ref({
-  llmModel: 'deepseek-chat',
+  llmModel: 'deepseek-reasoner',
   embeddingModel: 'sentence-transformers/all-MiniLM-L6-v2',
   topK: 8,
   scoreThreshold: 0.0,
@@ -498,8 +498,14 @@ const settings = ref({
 });
 
 const currentPromptPreset = ref('default');
-const availableModels = ref(['deepseek-chat', 'qwen-turbo', 'qwen-plus', 'qwen-max']);
+const availableModels = ref(['deepseek-reasoner', 'deepseek-chat', 'qwen-turbo', 'qwen-plus', 'qwen-max']);
 const modelOptions = ref([
+  {
+    value: 'deepseek-reasoner',
+    name: 'DeepSeek Reasoner',
+    desc: '更强推理能力，适合复杂任务',
+    icon: '🧠'
+  },
   {
     value: 'deepseek-chat',
     name: 'DeepSeek Chat',
@@ -691,7 +697,7 @@ function loadSettings() {
       // 验证 llmModel 是否在可用列表中
       if (availableModels.value.length > 0 && !availableModels.value.includes(settings.value.llmModel)) {
         console.warn(`Invalid model '${settings.value.llmModel}' in localStorage, resetting to default`);
-        settings.value.llmModel = availableModels.value[0] || 'deepseek-chat';
+        settings.value.llmModel = availableModels.value[0] || 'deepseek-reasoner';
         // 只保存到 localStorage，不触发 emit
         localStorage.setItem('app-settings', JSON.stringify(settings.value));
       }
@@ -816,7 +822,7 @@ function resetSettings() {
   if (!confirm('确认恢复所有默认设置？')) return;
   
   settings.value = {
-    llmModel: 'deepseek-chat',
+    llmModel: 'deepseek-reasoner',
     embeddingModel: 'sentence-transformers/all-MiniLM-L6-v2',
     topK: 8,
     scoreThreshold: 0.0,
@@ -844,6 +850,7 @@ async function loadAvailableModels() {
       
       // 模型配置映射
       const modelConfigMap = {
+        'deepseek-reasoner': { name: 'DeepSeek Reasoner', desc: '更强推理能力，适合复杂任务', icon: '🧠' },
         'deepseek-chat': { name: 'DeepSeek Chat', desc: '高性价比，推理能力强', icon: '🚀' },
         'qwen-turbo': { name: 'Qwen Turbo', desc: '快速响应，适合日常对话', icon: '⚡' },
         'qwen-plus': { name: 'Qwen Plus', desc: '平衡性能与成本，推荐', icon: '✨' },
@@ -1744,4 +1751,3 @@ onMounted(async () => {
   background: var(--bg-secondary);
 }
 </style>
-
