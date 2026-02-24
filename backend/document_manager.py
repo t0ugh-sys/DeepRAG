@@ -5,11 +5,18 @@
 """
 
 import json
+import logging
+import os
+import tempfile
+from threading import RLock
 from typing import Dict, Any, List, Optional, Set
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 import hashlib
+
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentMetadata:
@@ -18,20 +25,50 @@ class DocumentMetadata:
     def __init__(self, metadata_file: str = "data/documents_metadata.json"):
         self.metadata_file = metadata_file
         self.metadata: Dict[str, Dict[str, Any]] = {}
+        self._lock = RLock()
         self.load_metadata()
-    
-    def load_metadata(self):
-        """加载元数据"""
-        if Path(self.metadata_file).exists():
-            with open(self.metadata_file, 'r', encoding='utf-8') as f:
-                self.metadata = json.load(f)
-    
-    def save_metadata(self):
-        """保存元数据"""
-        Path(self.metadata_file).parent.mkdir(parents=True, exist_ok=True)
-        with open(self.metadata_file, 'w', encoding='utf-8') as f:
-            json.dump(self.metadata, f, indent=2, ensure_ascii=False)
-    
+
+    def load_metadata(self) -> None:
+        """Load metadata from disk (best-effort)."""
+        with self._lock:
+            metadata_path = Path(self.metadata_file)
+            if not metadata_path.exists():
+                self.metadata = {}
+                return
+
+            try:
+                with metadata_path.open('r', encoding='utf-8') as f:
+                    self.metadata = json.load(f)
+            except Exception as e:
+                # Corrupted/partial JSON should not take down the service.
+                logger.warning('Failed to load metadata file %s (%s); falling back to empty metadata.', metadata_path, e)
+                self.metadata = {}
+
+    def _save_metadata_atomic(self) -> None:
+        metadata_path = Path(self.metadata_file)
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Atomic write: write to temp file in the same directory then replace.
+        fd, tmp_name = tempfile.mkstemp(prefix=metadata_path.name + '.', suffix='.tmp', dir=str(metadata_path.parent))
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as f:
+                json.dump(self.metadata, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, metadata_path)
+        finally:
+            try:
+                if os.path.exists(tmp_name):
+                    os.remove(tmp_name)
+            except OSError:
+                # Best-effort cleanup.
+                pass
+
+    def save_metadata(self) -> None:
+        """Persist metadata to disk (thread-safe)."""
+        with self._lock:
+            self._save_metadata_atomic()
+
     def get_document_info(self, path: str) -> Optional[Dict[str, Any]]:
         """获取文档信息"""
         return self.metadata.get(path)

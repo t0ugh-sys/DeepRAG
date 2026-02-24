@@ -1,5 +1,9 @@
-﻿import os
+import os
+import logging
 from dataclasses import dataclass
+
+
+logger = logging.getLogger(__name__)
 
 
 # Load .env.local then .env if available / 优先加载 .env.local，再加载 .env
@@ -14,16 +18,14 @@ def _load_env_files() -> None:
             try:
                 if os.path.exists(env_path):
                     load_dotenv(dotenv_path=env_path, override=True)
-                    print(f"[OK] Loaded env file: {env_path}")
-                    api_key = os.getenv('OPENAI_API_KEY')
-                    if api_key:
-                        print(f"  -> OPENAI_API_KEY loaded (length: {len(api_key)})")
-                    else:
-                        print("  -> OPENAI_API_KEY still empty!")
+                    # Avoid printing secrets to stdout; rely on standard logging.
+                    if os.getenv('RAG_DEBUG_CONFIG', '').lower() in {'1', 'true', 'yes'}:
+                        logger.info('Loaded env file: %s', env_path)
             except Exception as e:
-                print(f"[ERROR] Failed to load env file: {env_path}, {e}")
+                logger.warning('Failed to load env file: %s (%s)', env_path, e)
     except Exception as e:
-        print(f"[ERROR] python-dotenv not installed: {e}")
+        # python-dotenv is optional in some deployments (e.g. env is injected by container/orchestrator).
+        logger.debug('python-dotenv not installed or failed to import: %s', e)
 
 
 _load_env_files()
@@ -172,11 +174,8 @@ class Settings:
         if '*' in self.cors_allow_origins and self.cors_allow_credentials:
             self.cors_allow_credentials = False
 
-        # Debug: show key presence / 调试：显示密钥是否存在
-        if self.openai_api_key:
-            print(f"[OK] OPENAI_API_KEY loaded (length: {len(self.openai_api_key)})")
-        else:
-            print('[ERROR] OPENAI_API_KEY not found in environment!')
+        if os.getenv('RAG_DEBUG_CONFIG', '').lower() in {'1', 'true', 'yes'}:
+            logger.info('OPENAI_API_KEY present: %s', bool(self.openai_api_key))
 
 
 def ensure_dirs(path: str) -> None:

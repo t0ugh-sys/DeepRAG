@@ -24,8 +24,13 @@ Thumbs.db
 # Data & Index
 data/index/
 data/conversations/
-# Optional: ignore raw docs
-# data/docs/
+# User documents & metadata (generated at runtime)
+data/docs/
+data/documents_metadata.json
+
+# Backend runtime files
+backend/data/
+backend/logs/
 
 # Logs
 logs/
@@ -35,4 +40,3 @@ logs/
 .coverage
 htmlcov/
 .tox/
-
