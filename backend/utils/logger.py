@@ -24,15 +24,18 @@ def setup_logger(name: str = "rag", level: str = "INFO") -> logging.Logger:
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
     
-    # 可选：文件输出
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
-    file_handler = logging.FileHandler(log_dir / "rag.log", encoding="utf-8")
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    # 可选：文件输出（失败时不影响服务启动）
+    try:
+        log_dir = Path("logs")
+        log_dir.mkdir(exist_ok=True)
+        file_handler = logging.FileHandler(log_dir / "rag.log", encoding="utf-8")
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    except Exception:
+        # In some environments (read-only FS / permission issues), file logging may be unavailable.
+        pass
     
     return logger
 
 logger = setup_logger()
-

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from threading import Lock
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi import UploadFile, File, Form
@@ -13,7 +14,7 @@ from pydantic import BaseModel
 from backend.config import Settings
 from backend.types import RetrievedChunk
 from backend.utils.logger import logger
-from backend.utils.middleware import RequestLoggingMiddleware, get_current_request
+from backend.utils.middleware import RequestLoggingMiddleware, get_current_request, get_current_request_id
 from backend.utils.responses import success_response, error_response
 from backend.utils.cache import query_cache
 from backend.document_manager import get_document_manager
@@ -92,6 +93,35 @@ app.add_middleware(
     allow_methods=cors_methods,
     allow_headers=cors_headers,
 )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:  # type: ignore[override]
+    # Keep response shape consistent across the API.
+    return error_response(
+        error=str(exc.detail),
+        status_code=exc.status_code,
+        details={"request_id": get_current_request_id()},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:  # type: ignore[override]
+    return error_response(
+        error="Validation error",
+        status_code=422,
+        details={"errors": exc.errors(), "request_id": get_current_request_id()},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:  # type: ignore[override]
+    # Avoid leaking internal details by default.
+    logger.exception("Unhandled error")
+    details: Dict[str, Any] = {"request_id": get_current_request_id()}
+    if os.getenv("RAG_DEBUG_ERRORS", "").lower() in {"1", "true", "yes"}:
+        details["error"] = str(exc)
+    return error_response(error="Internal Server Error", status_code=500, details=details)
 
 @app.get("/")
 def root() -> dict:  # type: ignore[override]
