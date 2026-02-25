@@ -1,4 +1,4 @@
-from typing import List, Any, Dict, Optional
+from typing import List, Any, Dict, Optional, TYPE_CHECKING
 import os
 import time
 from contextlib import asynccontextmanager
@@ -8,19 +8,19 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi import UploadFile, File, Form
-from pymilvus import connections as _milvus_conn, FieldSchema as _FieldSchema, CollectionSchema as _CollectionSchema, DataType as _DataType, Collection as _Collection, utility as _utility
-from sentence_transformers import SentenceTransformer as _ST
 from pydantic import BaseModel
 
 from backend.config import Settings
-from backend.ingest import load_documents, build_index
-from backend.rag import RAGPipeline, RetrievedChunk
+from backend.types import RetrievedChunk
 from backend.utils.logger import logger
 from backend.utils.middleware import RequestLoggingMiddleware, get_current_request
 from backend.utils.responses import success_response, error_response
 from backend.utils.cache import query_cache
 from backend.document_manager import get_document_manager
 from backend.performance_monitor import get_monitor, RequestTimer
+
+if TYPE_CHECKING:
+    from backend.rag import RAGPipeline
 
 settings = Settings()
 pipeline: RAGPipeline | None = None
@@ -32,6 +32,9 @@ cors_headers = [h.strip() for h in settings.cors_allow_headers.split(",") if h.s
 
 
 def _ensure_index_ready() -> None:
+    # Lazy import to keep module import lightweight for unit tests.
+    from backend.ingest import load_documents, build_index
+
     meta_path = os.path.join(settings.index_dir, "meta.jsonl")
     if os.path.exists(meta_path) and os.path.getsize(meta_path) > 0:
         return
@@ -49,6 +52,9 @@ def _ensure_index_ready() -> None:
     logger.info("Auto-ingest completed / 自动入库完成")
 
 def _get_pipeline(ns: str) -> RAGPipeline:
+    # Lazy import to keep module import lightweight for unit tests.
+    from backend.rag import RAGPipeline
+
     with _pipeline_lock:
         if ns in pipelines:
             return pipelines[ns]
@@ -146,7 +152,9 @@ def _collection_name(ns: str) -> str:
 
 
 def _ensure_milvus_conn() -> None:
-    _milvus_conn.connect(
+    from pymilvus import connections
+
+    connections.connect(
         alias="default",
         host=settings.milvus_host,
         port=settings.milvus_port,
@@ -157,26 +165,30 @@ def _ensure_milvus_conn() -> None:
 
 
 def _embedding_dim() -> int:
-    model = _ST(settings.embedding_model_name)
+    from sentence_transformers import SentenceTransformer
+
+    model = SentenceTransformer(settings.embedding_model_name)
     v = model.encode(["dim"], normalize_embeddings=True)
     return int(len(v[0]))
 
 
 def _create_collection(ns: str) -> None:
+    from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, utility
+
     _ensure_milvus_conn()
     name = _collection_name(ns)
-    if _utility.has_collection(name):
+    if utility.has_collection(name):
         return
     dim = _embedding_dim()
     fields = [
-        _FieldSchema(name="id", dtype=_DataType.INT64, is_primary=True, auto_id=True),
-        _FieldSchema(name="path", dtype=_DataType.VARCHAR, max_length=512),
-        _FieldSchema(name="chunk_id", dtype=_DataType.INT64),
-        _FieldSchema(name="text", dtype=_DataType.VARCHAR, max_length=32768),
-        _FieldSchema(name="embedding", dtype=_DataType.FLOAT_VECTOR, dim=dim),
+        FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+        FieldSchema(name="path", dtype=DataType.VARCHAR, max_length=512),
+        FieldSchema(name="chunk_id", dtype=DataType.INT64),
+        FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=32768),
+        FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=dim),
     ]
-    schema = _CollectionSchema(fields, description="RAG chunk collection / RAG 分块集合")
-    coll = _Collection(name, schema=schema)
+    schema = CollectionSchema(fields, description="RAG chunk collection / RAG 分块集合")
+    coll = Collection(name, schema=schema)
     index_params = {"index_type": "IVF_FLAT", "metric_type": "IP", "params": {"nlist": 1024}}
     coll.create_index(field_name="embedding", index_params=index_params)
 
@@ -197,10 +209,12 @@ def ns_clear(namespace: str | None = None, x_api_key: str | None = None) -> JSON
     _require_api_key(x_api_key)
     ns = _resolve_namespace(namespace)
     try:
+        from pymilvus import Collection, utility
+
         _ensure_milvus_conn()
         name = _collection_name(ns)
-        if _utility.has_collection(name):
-            _Collection(name).drop()
+        if utility.has_collection(name):
+            Collection(name).drop()
         _create_collection(ns)
         return JSONResponse({"ok": True, "namespace": ns, "cleared": True})
     except Exception as e:
@@ -212,10 +226,12 @@ def ns_delete(namespace: str | None = None, x_api_key: str | None = None) -> JSO
     _require_api_key(x_api_key)
     ns = _resolve_namespace(namespace)
     try:
+        from pymilvus import Collection, utility
+
         _ensure_milvus_conn()
         name = _collection_name(ns)
-        if _utility.has_collection(name):
-            _Collection(name).drop()
+        if utility.has_collection(name):
+            Collection(name).drop()
         return JSONResponse({"ok": True, "namespace": ns, "deleted": True})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)

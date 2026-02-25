@@ -3,7 +3,6 @@
 import json
 import logging
 import os
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -15,19 +14,13 @@ from sentence_transformers import SentenceTransformer
 
 from backend.config import Settings
 from backend.ingest import split_text
+from backend.types import RetrievedChunk
 from backend.utils.cache import query_cache
 
 try:
     from FlagEmbedding import FlagReranker  # type: ignore
 except Exception:  # pragma: no cover
     FlagReranker = None  # type: ignore
-
-
-@dataclass
-class RetrievedChunk:
-    text: str
-    score: float
-    meta: Dict[str, Any]
 
 
 class VectorStore:
