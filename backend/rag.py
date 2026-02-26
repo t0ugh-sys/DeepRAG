@@ -50,6 +50,7 @@ class VectorStore:
         self.embedder = SentenceTransformer(embedding_model)
         self._bm25_tokenized = [self._tokenize(t) for t in self.texts]
         self._bm25 = BM25Okapi(self._bm25_tokenized) if self._bm25_tokenized else None
+        self._meta_key_to_idx = self._build_meta_key_index()
 
         self.collection = None
         self.faiss_index = None
@@ -88,6 +89,46 @@ class VectorStore:
                 dim = int(self.embedder.get_sentence_embedding_dimension())
                 self.faiss_index = faiss.IndexFlatIP(dim)
 
+    @staticmethod
+    def _normalize_path(path: str) -> str:
+        return path.replace("\\", "/").strip().lower()
+
+    def _meta_key(self, meta: Dict[str, Any]) -> tuple[str, int] | None:
+        path = meta.get("path")
+        chunk_id = meta.get("chunk_id")
+        if path is None or chunk_id is None:
+            return None
+        try:
+            return (self._normalize_path(str(path)), int(chunk_id))
+        except Exception:
+            return None
+
+    def _build_meta_key_index(self) -> Dict[tuple[str, int], int]:
+        out: Dict[tuple[str, int], int] = {}
+        for idx, meta in enumerate(self.metas):
+            key = self._meta_key(meta)
+            if key is None:
+                continue
+            # Keep the first occurrence; duplicates can happen after partial writes or inconsistent meta.
+            out.setdefault(key, idx)
+        return out
+
+    @staticmethod
+    def _normalize_vec_score(score: float) -> float:
+        # Embeddings are normalized in this project, so inner-product ~= cosine similarity in [-1, 1].
+        # Map to [0, 1] for stable fusion with BM25 scores.
+        v = (float(score) + 1.0) / 2.0
+        if v < 0.0:
+            return 0.0
+        if v > 1.0:
+            return 1.0
+        return v
+
+    def _rebuild_bm25(self) -> None:
+        self._bm25_tokenized = [self._tokenize(t) for t in self.texts]
+        self._bm25 = BM25Okapi(self._bm25_tokenized) if self._bm25_tokenized else None
+        self._meta_key_to_idx = self._build_meta_key_index()
+
     def _expand_query(self, query: str) -> str:
         """Expand query by keywords / 关键词扩展。"""
         try:
@@ -106,32 +147,34 @@ class VectorStore:
         vec = np.array(vec).astype("float32")[0]
 
         results: List[RetrievedChunk] = []
+        candidate_k = max(top_k * 4, top_k + 10)
         if self.backend == "milvus" and self.collection is not None:
             search_params = {"metric_type": "IP", "params": {"nprobe": 16}}
             res = self.collection.search(
                 data=[vec],
                 anns_field="embedding",
                 param=search_params,
-                limit=top_k,
+                limit=candidate_k,
                 output_fields=["path", "chunk_id", "text"],
             )
             hits = res[0]
             for hit in hits:
                 meta = {"path": hit.entity.get("path"), "chunk_id": int(hit.entity.get("chunk_id"))}
                 results.append(RetrievedChunk(text=hit.entity.get("text"), score=float(hit.distance), meta=meta))
-            return _apply_score_threshold(_dedupe_results(results), self.settings.score_threshold)
+            recs = self._fuse_with_bm25(query, _dedupe_results(results), top_k, query_vec=vec)
+            return recs
 
         if self.faiss_index is None:
             return []
         import faiss  # type: ignore
 
-        scores, indices = self.faiss_index.search(vec.reshape(1, -1), top_k)
+        scores, indices = self.faiss_index.search(vec.reshape(1, -1), candidate_k)
         for score, idx in zip(scores[0], indices[0]):
             if idx == -1:
                 continue
             results.append(RetrievedChunk(text=self.texts[idx], score=float(score), meta=self.metas[idx]))
 
-        return self._fuse_with_bm25(query, _dedupe_results(results), top_k)
+        return self._fuse_with_bm25(query, _dedupe_results(results), top_k, query_vec=vec)
 
     def _tokenize(self, s: str) -> list[str]:
         try:
@@ -144,31 +187,128 @@ class VectorStore:
 
             return [w for w in re.split(r"\W+", s.lower()) if w]
 
-    def _fuse_with_bm25(self, query: str, vec_results: List[RetrievedChunk], top_k: int) -> List[RetrievedChunk]:
+    def _fuse_with_bm25(
+        self,
+        query: str,
+        vec_results: List[RetrievedChunk],
+        top_k: int,
+        query_vec: np.ndarray | None = None,
+    ) -> List[RetrievedChunk]:
         settings = self.settings
-        recs = list(vec_results)
-        if settings.bm25_enabled and self._bm25 is not None:
+        # Build candidate pool = vector candidates + BM25 top candidates, then fuse scores.
+        vec_by_idx: Dict[int, RetrievedChunk] = {}
+        synthetic_idx = -1
+        for r in vec_results:
+            key = self._meta_key(r.meta)
+            if key is None:
+                vec_by_idx[synthetic_idx] = r
+                synthetic_idx -= 1
+                continue
+            idx = self._meta_key_to_idx.get(key)
+            if idx is None:
+                vec_by_idx[synthetic_idx] = r
+                synthetic_idx -= 1
+                continue
+            # Keep the best vector score for the same corpus idx.
+            prev = vec_by_idx.get(idx)
+            if prev is None or r.score > prev.score:
+                vec_by_idx[idx] = r
+
+        bm25_scores: list[float] | None = None
+        bm25_top: list[int] = []
+        if settings.bm25_enabled and self._bm25 is not None and self.texts:
             tokens = self._tokenize(query)
-            bm25_scores = self._bm25.get_scores(tokens)
-            bm25_max = max(bm25_scores) if len(bm25_scores) else 1.0
+            bm25_scores = [float(s) for s in self._bm25.get_scores(tokens)]
+            if bm25_scores:
+                bm25_k = min(len(bm25_scores), max(top_k * 4, 20))
+                arr = np.asarray(bm25_scores, dtype="float32")
+                idxs = np.argpartition(-arr, bm25_k - 1)[:bm25_k]
+                idxs = idxs[np.argsort(-arr[idxs])]
+                bm25_top = [int(i) for i in idxs.tolist()]
 
-            for i, r in enumerate(recs):
-                bm = (bm25_scores[i] / (bm25_max or 1.0)) if i < len(bm25_scores) else 0.0
-                r.score = settings.vec_weight * r.score + settings.bm25_weight * float(bm)
+        candidates: Dict[int, RetrievedChunk] = {}
+        for idx, r in vec_by_idx.items():
+            candidates[idx] = RetrievedChunk(text=r.text, score=r.score, meta=dict(r.meta))
+        for idx in bm25_top:
+            if idx in candidates:
+                continue
+            try:
+                candidates[idx] = RetrievedChunk(text=self.texts[idx], score=0.0, meta=dict(self.metas[idx]))
+            except Exception:
+                continue
 
-            if settings.score_threshold > 0:
-                recs = [r for r in recs if r.score >= settings.score_threshold]
-            recs = sorted(recs, key=lambda x: x.score, reverse=True)
+        if not candidates:
+            return []
 
-        if len(recs) > top_k:
-            recs = self._mmr(query, recs, top_k, lambda_weight=settings.mmr_lambda)
-        return recs
+        bm25_max = 1.0
+        if bm25_scores:
+            try:
+                bm25_max = max(bm25_scores) or 1.0
+            except Exception:
+                bm25_max = 1.0
 
-    def _mmr(self, query: str, recs: List[RetrievedChunk], k: int, lambda_weight: float = 0.5) -> List[RetrievedChunk]:
-        query_vec = self.embedder.encode([query], normalize_embeddings=True)
-        query_vec = np.array(query_vec).astype("float32")[0]
-        cand_vecs = self.embedder.encode([r.text for r in recs], normalize_embeddings=True)
-        cand_vecs = np.array(cand_vecs).astype("float32")
+        fused: List[RetrievedChunk] = []
+        for idx, r in candidates.items():
+            vec_norm = self._normalize_vec_score(r.score) if idx in vec_by_idx else 0.0
+            bm_norm = 0.0
+            if bm25_scores and 0 <= idx < len(bm25_scores):
+                bm_norm = float(bm25_scores[idx] / (bm25_max or 1.0))
+                if bm_norm < 0.0:
+                    bm_norm = 0.0
+                if bm_norm > 1.0:
+                    bm_norm = 1.0
+            r.score = settings.vec_weight * vec_norm + settings.bm25_weight * bm_norm
+            fused.append(r)
+
+        fused = [r for r in fused if r.text.strip()]
+        if settings.score_threshold > 0:
+            fused = [r for r in fused if r.score >= settings.score_threshold]
+        fused = sorted(fused, key=lambda x: x.score, reverse=True)
+
+        if len(fused) <= top_k:
+            return fused
+
+        # MMR is expensive; limit pool size for diversification.
+        pool_size = min(len(fused), max(top_k * 4, 30))
+        pool = fused[:pool_size]
+        return self._mmr(query, pool, top_k, lambda_weight=settings.mmr_lambda, query_vec=query_vec)
+
+    def _mmr(
+        self,
+        query: str,
+        recs: List[RetrievedChunk],
+        k: int,
+        lambda_weight: float = 0.5,
+        query_vec: np.ndarray | None = None,
+    ) -> List[RetrievedChunk]:
+        local_query_vec = query_vec
+        if local_query_vec is None:
+            local_query_vec = self.embedder.encode([query], normalize_embeddings=True)
+            local_query_vec = np.array(local_query_vec).astype("float32")[0]
+
+        cand_vecs: np.ndarray | None = None
+        if self.backend == "faiss" and getattr(self, "faiss_index", None) is not None and hasattr(self.faiss_index, "reconstruct"):
+            idxs: list[int] = []
+            ok = True
+            for r in recs:
+                key = self._meta_key(r.meta)
+                if key is None:
+                    ok = False
+                    break
+                idx = self._meta_key_to_idx.get(key)
+                if idx is None:
+                    ok = False
+                    break
+                idxs.append(int(idx))
+            if ok and idxs:
+                try:
+                    cand_vecs = np.vstack([self.faiss_index.reconstruct(i) for i in idxs]).astype("float32")
+                except Exception:
+                    cand_vecs = None
+
+        if cand_vecs is None:
+            cand_vecs = self.embedder.encode([r.text for r in recs], normalize_embeddings=True)
+            cand_vecs = np.array(cand_vecs).astype("float32")
 
         selected: list[int] = []
         remaining = set(range(len(recs)))
@@ -178,14 +318,14 @@ class VectorStore:
 
         while remaining and len(selected) < k:
             if not selected:
-                idx = max(remaining, key=lambda i: sim(query_vec, cand_vecs[i]))
+                idx = max(remaining, key=lambda i: sim(local_query_vec, cand_vecs[i]))
                 selected.append(idx)
                 remaining.remove(idx)
                 continue
             best_idx = None
             best_score = -1e9
             for i in list(remaining):
-                relevance = sim(query_vec, cand_vecs[i])
+                relevance = sim(local_query_vec, cand_vecs[i])
                 diversity = max(sim(cand_vecs[i], cand_vecs[j]) for j in selected)
                 mmr_score = lambda_weight * relevance - (1 - lambda_weight) * diversity
                 if mmr_score > best_score:
@@ -209,6 +349,15 @@ class VectorStore:
             chunk_ids = list(range(len(chunks)))
             self.collection.insert([paths, chunk_ids, chunks, embeddings])
             self.collection.flush()
+
+            # Keep local meta/BM25 in sync for hybrid retrieval & debugging.
+            with open(self.meta_path, "a", encoding="utf-8") as f:
+                for idx, chunk in enumerate(chunks):
+                    meta = {"path": path, "chunk_id": idx, "chunk_size": len(chunk)}
+                    f.write(json.dumps({"meta": meta, "text": chunk}, ensure_ascii=False) + "\n")
+                    self.metas.append(meta)
+                    self.texts.append(chunk)
+            self._rebuild_bm25()
             return len(chunks)
 
         if self.backend == "faiss" and self.faiss_index is not None:
@@ -228,6 +377,7 @@ class VectorStore:
                     f.write(json.dumps(rec, ensure_ascii=False) + "\n")
                     self.metas.append(meta)
                     self.texts.append(chunk)
+            self._rebuild_bm25()
             return len(chunks)
 
         raise RuntimeError("Vector backend not initialized / 向量后端未初始化")
@@ -238,6 +388,29 @@ class VectorStore:
             expr = "path == '" + escaped + "'"
             res = self.collection.delete(expr)
             self.collection.flush()
+
+            # Best-effort local cleanup for hybrid retrieval.
+            try:
+                removed = 0
+                remain_texts: List[str] = []
+                remain_metas: List[Dict[str, Any]] = []
+                for t, m in zip(self.texts, self.metas):
+                    if self._normalize_path(str(m.get("path", ""))) == self._normalize_path(path):
+                        removed += 1
+                        continue
+                    remain_texts.append(t)
+                    remain_metas.append(m)
+
+                with open(self.meta_path, "w", encoding="utf-8") as f:
+                    for m, t in zip(remain_metas, remain_texts):
+                        f.write(json.dumps({"meta": m, "text": t}, ensure_ascii=False) + "\n")
+                self.texts = remain_texts
+                self.metas = remain_metas
+                self._rebuild_bm25()
+                if removed:
+                    return removed
+            except Exception:
+                pass
             try:
                 return int(getattr(res, "delete_count", 0))
             except Exception:
@@ -275,6 +448,7 @@ class VectorStore:
 
             self.texts = remain_texts
             self.metas = remain_metas
+            self._rebuild_bm25()
             return removed
 
         raise RuntimeError("Vector backend not initialized / 向量后端未初始化")
@@ -487,7 +661,14 @@ class RAGPipeline:
         web_top_k: int | None = None,
     ):
         k = top_k or self.settings.top_k
-        recs = self.store.search(question, k)
+
+        namespace = getattr(self.store, "namespace", "default")
+        cached_result = query_cache.get(question, k, namespace)
+        if cached_result is not None:
+            recs = cached_result
+        else:
+            recs = self.store.search(question, k)
+            query_cache.set(question, k, namespace, recs)
 
         web_snippets: List[str] = []
         if web_enabled:
