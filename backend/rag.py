@@ -621,6 +621,17 @@ class RAGPipeline:
     ) -> Tuple[str, List[RetrievedChunk]]:
         k = top_k or self.settings.top_k
 
+        use_rr = (self.reranker is not None) and (
+            self.settings.reranker_enabled if rerank_enabled is None else rerank_enabled
+        )
+        top_n = rerank_top_n or self.settings.reranker_top_n
+
+        # When rerank is enabled, retrieve a larger candidate pool then rerank.
+        candidate_k = k
+        if use_rr:
+            candidate_k = max(k * 4, top_n * 4, 32, k, top_n)
+            candidate_k = min(candidate_k, 200)
+
         namespace = getattr(self.store, "namespace", "default")
         retrieval_options = {
             "rev": getattr(self.store, "_corpus_revision", 0),
@@ -632,30 +643,30 @@ class RAGPipeline:
             "embedding_model": str(self.settings.embedding_model_name),
             "vector_backend": str(getattr(self.store, "backend", "unknown")),
         }
-        cached_result = query_cache.get(question, k, namespace, retrieval_options)
+        cached_result = query_cache.get(question, candidate_k, namespace, retrieval_options)
         if cached_result is not None:
             # Clone to avoid mutating cached objects (rerank, score updates).
             recs = [RetrievedChunk(text=r.text, score=r.score, meta=dict(r.meta)) for r in cached_result]
         else:
-            recs = self.store.search(question, k)
+            recs = self.store.search(question, candidate_k)
             query_cache.set(
                 question,
-                k,
+                candidate_k,
                 namespace,
                 [RetrievedChunk(text=r.text, score=r.score, meta=dict(r.meta)) for r in recs],
                 retrieval_options,
             )
 
-        use_rr = (self.reranker is not None) and (
-            self.settings.reranker_enabled if rerank_enabled is None else rerank_enabled
-        )
-        top_n = rerank_top_n or self.settings.reranker_top_n
         if use_rr:
             pairs = [[question, r.text] for r in recs]
             scores = self.reranker.compute_score(pairs)
             for r, s in zip(recs, scores):
                 r.score = float(s)
-            recs = sorted(recs, key=lambda x: x.score, reverse=True)[:top_n]
+            recs = sorted(recs, key=lambda x: x.score, reverse=True)
+            context_k = max(k, top_n)
+            recs = recs[:context_k]
+        else:
+            recs = recs[:k]
 
         prompt = build_prompt(question, recs, strict_mode=self.settings.strict_mode)
         target_model = model or self.settings.llm_model
@@ -681,6 +692,16 @@ class RAGPipeline:
     ):
         k = top_k or self.settings.top_k
 
+        use_rr = (self.reranker is not None) and (
+            self.settings.reranker_enabled if rerank_enabled is None else rerank_enabled
+        )
+        top_n = rerank_top_n or self.settings.reranker_top_n
+
+        candidate_k = k
+        if use_rr:
+            candidate_k = max(k * 4, top_n * 4, 32, k, top_n)
+            candidate_k = min(candidate_k, 200)
+
         namespace = getattr(self.store, "namespace", "default")
         retrieval_options = {
             "rev": getattr(self.store, "_corpus_revision", 0),
@@ -692,14 +713,14 @@ class RAGPipeline:
             "embedding_model": str(self.settings.embedding_model_name),
             "vector_backend": str(getattr(self.store, "backend", "unknown")),
         }
-        cached_result = query_cache.get(question, k, namespace, retrieval_options)
+        cached_result = query_cache.get(question, candidate_k, namespace, retrieval_options)
         if cached_result is not None:
             recs = [RetrievedChunk(text=r.text, score=r.score, meta=dict(r.meta)) for r in cached_result]
         else:
-            recs = self.store.search(question, k)
+            recs = self.store.search(question, candidate_k)
             query_cache.set(
                 question,
-                k,
+                candidate_k,
                 namespace,
                 [RetrievedChunk(text=r.text, score=r.score, meta=dict(r.meta)) for r in recs],
                 retrieval_options,
@@ -726,16 +747,16 @@ class RAGPipeline:
             except Exception:
                 pass
 
-        use_rr = (self.reranker is not None) and (
-            self.settings.reranker_enabled if rerank_enabled is None else rerank_enabled
-        )
-        top_n = rerank_top_n or self.settings.reranker_top_n
         if use_rr:
             pairs = [[question, r.text] for r in recs]
             scores = self.reranker.compute_score(pairs)
             for r, s in zip(recs, scores):
                 r.score = float(s)
-            recs = sorted(recs, key=lambda x: x.score, reverse=True)[:top_n]
+            recs = sorted(recs, key=lambda x: x.score, reverse=True)
+            context_k = max(k, top_n)
+            recs = recs[:context_k]
+        else:
+            recs = recs[:k]
 
         if web_snippets:
             from dataclasses import dataclass
