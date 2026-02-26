@@ -51,6 +51,7 @@ class VectorStore:
         self._bm25_tokenized = [self._tokenize(t) for t in self.texts]
         self._bm25 = BM25Okapi(self._bm25_tokenized) if self._bm25_tokenized else None
         self._meta_key_to_idx = self._build_meta_key_index()
+        self._corpus_revision = 0
 
         self.collection = None
         self.faiss_index = None
@@ -128,6 +129,7 @@ class VectorStore:
         self._bm25_tokenized = [self._tokenize(t) for t in self.texts]
         self._bm25 = BM25Okapi(self._bm25_tokenized) if self._bm25_tokenized else None
         self._meta_key_to_idx = self._build_meta_key_index()
+        self._corpus_revision += 1
 
     def _expand_query(self, query: str) -> str:
         """Expand query by keywords / 关键词扩展。"""
@@ -620,12 +622,29 @@ class RAGPipeline:
         k = top_k or self.settings.top_k
 
         namespace = getattr(self.store, "namespace", "default")
-        cached_result = query_cache.get(question, k, namespace)
+        retrieval_options = {
+            "rev": getattr(self.store, "_corpus_revision", 0),
+            "bm25_enabled": bool(self.settings.bm25_enabled),
+            "bm25_weight": float(self.settings.bm25_weight),
+            "vec_weight": float(self.settings.vec_weight),
+            "mmr_lambda": float(self.settings.mmr_lambda),
+            "score_threshold": float(self.settings.score_threshold),
+            "embedding_model": str(self.settings.embedding_model_name),
+            "vector_backend": str(getattr(self.store, "backend", "unknown")),
+        }
+        cached_result = query_cache.get(question, k, namespace, retrieval_options)
         if cached_result is not None:
-            recs = cached_result
+            # Clone to avoid mutating cached objects (rerank, score updates).
+            recs = [RetrievedChunk(text=r.text, score=r.score, meta=dict(r.meta)) for r in cached_result]
         else:
             recs = self.store.search(question, k)
-            query_cache.set(question, k, namespace, recs)
+            query_cache.set(
+                question,
+                k,
+                namespace,
+                [RetrievedChunk(text=r.text, score=r.score, meta=dict(r.meta)) for r in recs],
+                retrieval_options,
+            )
 
         use_rr = (self.reranker is not None) and (
             self.settings.reranker_enabled if rerank_enabled is None else rerank_enabled
@@ -663,12 +682,28 @@ class RAGPipeline:
         k = top_k or self.settings.top_k
 
         namespace = getattr(self.store, "namespace", "default")
-        cached_result = query_cache.get(question, k, namespace)
+        retrieval_options = {
+            "rev": getattr(self.store, "_corpus_revision", 0),
+            "bm25_enabled": bool(self.settings.bm25_enabled),
+            "bm25_weight": float(self.settings.bm25_weight),
+            "vec_weight": float(self.settings.vec_weight),
+            "mmr_lambda": float(self.settings.mmr_lambda),
+            "score_threshold": float(self.settings.score_threshold),
+            "embedding_model": str(self.settings.embedding_model_name),
+            "vector_backend": str(getattr(self.store, "backend", "unknown")),
+        }
+        cached_result = query_cache.get(question, k, namespace, retrieval_options)
         if cached_result is not None:
-            recs = cached_result
+            recs = [RetrievedChunk(text=r.text, score=r.score, meta=dict(r.meta)) for r in cached_result]
         else:
             recs = self.store.search(question, k)
-            query_cache.set(question, k, namespace, recs)
+            query_cache.set(
+                question,
+                k,
+                namespace,
+                [RetrievedChunk(text=r.text, score=r.score, meta=dict(r.meta)) for r in recs],
+                retrieval_options,
+            )
 
         web_snippets: List[str] = []
         if web_enabled:

@@ -29,6 +29,14 @@ class TestQueryCache:
 
         # LRU eviction should remove query1 / LRU 应移除 query1
         assert cache.get("query1", 5, "default") is None
+
+    def test_cache_options_affect_key(self):
+        """Different options should not collide / 不同 options 不应命中同一缓存"""
+        cache = QueryCache(maxsize=10)
+        cache.set("q", 5, "default", "v1", options={"bm25": True})
+
+        assert cache.get("q", 5, "default", options={"bm25": True}) == "v1"
+        assert cache.get("q", 5, "default", options={"bm25": False}) is None
         assert cache.get("query2", 5, "default") == "result2"
         assert cache.get("query3", 5, "default") == "result3"
 

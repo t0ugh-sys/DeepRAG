@@ -2,7 +2,7 @@
 from collections import OrderedDict
 from functools import lru_cache
 from threading import Lock
-from typing import Tuple
+from typing import Any, Tuple
 import hashlib
 import json
 
@@ -15,20 +15,28 @@ class QueryCache:
         self._cache: "OrderedDict[str, object]" = OrderedDict()
         self._lock = Lock()
 
-    def _make_key(self, query: str, top_k: int, namespace: str) -> str:
-        data = f"{query}|{top_k}|{namespace}"
-        return hashlib.md5(data.encode()).hexdigest()
+    def _make_key(self, query: str, top_k: int, namespace: str, options: dict[str, Any] | None = None) -> str:
+        payload: dict[str, Any] = {"q": query, "k": top_k, "ns": namespace}
+        if options:
+            payload["opt"] = options
 
-    def get(self, query: str, top_k: int, namespace: str):
-        key = self._make_key(query, top_k, namespace)
+        try:
+            encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        except TypeError:
+            # Best-effort fallback when options contain non-JSONable values.
+            encoded = str(payload).encode("utf-8")
+        return hashlib.md5(encoded).hexdigest()
+
+    def get(self, query: str, top_k: int, namespace: str, options: dict[str, Any] | None = None):
+        key = self._make_key(query, top_k, namespace, options)
         with self._lock:
             if key not in self._cache:
                 return None
             self._cache.move_to_end(key)
             return self._cache[key]
 
-    def set(self, query: str, top_k: int, namespace: str, value):
-        key = self._make_key(query, top_k, namespace)
+    def set(self, query: str, top_k: int, namespace: str, value, options: dict[str, Any] | None = None):
+        key = self._make_key(query, top_k, namespace, options)
         with self._lock:
             if key in self._cache:
                 self._cache.move_to_end(key)
