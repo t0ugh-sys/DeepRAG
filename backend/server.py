@@ -918,7 +918,8 @@ def delete_doc(path: str, x_api_key: str | None = None, namespace: str | None = 
 
 
 @app.get("/docs/paths")
-def list_doc_paths(limit: int = 1000, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
+def list_doc_paths(limit: int = 1000, namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
+    _require_api_key(x_api_key)
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "Service unavailable / 服务不可用"}, status_code=503)
     ns = _resolve_namespace(namespace)
@@ -1187,9 +1188,11 @@ def get_document_metadata(path: str, x_api_key: str | None = None, namespace: st
 def list_documents_with_metadata(
     category: Optional[str] = None,
     tags: Optional[str] = None,
-    x_api_key: str | None = None
+    namespace: str | None = None,
+    x_api_key: str | None = None,
 ) -> Dict[str, Any]:
     _require_api_key(x_api_key)
+    ns = _resolve_namespace(namespace)
     tag_list = [t for t in tags.split(",") if t.strip()] if tags else None
 
     if pipeline is None:
@@ -1199,7 +1202,7 @@ def list_documents_with_metadata(
             "count": len(documents)
         })
 
-    local = _get_pipeline(settings.default_namespace)
+    local = _get_pipeline(ns)
     docs_stats = local.list_paths_with_stats(limit=10000)
 
     merged: List[Dict[str, Any]] = []
