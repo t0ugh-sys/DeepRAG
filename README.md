@@ -39,13 +39,33 @@
 │  (Vite 5173)    │  HTTP   │   (uvicorn 8000) │
 └─────────────────┘         └──────────┬───────┘
                                        │
-                      ┌────────────────┼────────────────┐
-                      │                │                │
-                 ┌────▼────┐     ┌────▼────┐     ┌────▼────┐
-                 │ Milvus  │     │ OpenAI  │     │ BM25    │
-                 │ /FAISS  │     │  兼容   │     │ Rerank  │
-                 └─────────┘     └─────────┘     └─────────┘
+                       ┌────────────────┼────────────────┐
+                       │                │                │
+                  ┌────▼────┐     ┌────▼────┐     ┌────▼────┐
+                  │ Milvus  │     │ OpenAI  │     │ BM25    │
+                  │ /FAISS  │     │  兼容   │     │ Rerank  │
+                  └─────────┘     └─────────┘     └─────────┘
 ```
+
+## 核心链路（默认组合与兜底）
+
+默认问答链路（`POST /ask`）：
+
+1. 文档解析与分块：上传/入库时完成（PDF/Docx/Xlsx/Text → `split_text`）。
+2. 检索：向量检索（Milvus 或 FAISS） + BM25（可选）进行候选召回。
+3. 融合：将向量相似度与 BM25 分数归一化后加权融合（`RAG_VEC_WEIGHT` / `RAG_BM25_WEIGHT`）。
+4. 多样化：对候选进行 MMR 下采样（`RAG_MMR_LAMBDA`）。
+5. 重排（可选）：若启用 reranker，则先扩大候选池后重排，并保留 `max(top_k, top_n)` 的上下文窗口。
+6. 生成：把上下文片段拼接到 prompt 中调用 OpenAI 兼容模型生成答案。
+
+失败兜底（Best-effort）：
+- Milvus 不可用：自动回退到 FAISS。
+- Reranker 不可用/报错：跳过重排，仅用融合检索结果。
+- 解析器缺失：对应格式回退到更基础的解析方案（例如 PDF 回退到 pdfminer）。
+
+排障建议：
+- 先看响应头 `X-Request-Id`，再查后端日志同 request_id 的检索/重排过程。
+- 如果效果波动：先固定模型与检索参数（`RAG_*`）再逐项开关（BM25/MMR/Rerank/改写）。
 
 ## 快速开始
 
@@ -117,6 +137,14 @@ RAG_NAMESPACE_WHITELIST=default  # 允许的命名空间（逗号分隔，可选
 RAG_API_KEY_NAMESPACE=default  # API key 绑定命名空间（可选）
 RAG_API_KEY=  # 可选，设置后需请求头 X-API-Key
 RAG_API_KEY_REQUIRED=false  # 是否强制鉴权（true/false）
+
+# 管理员接口（强烈建议公网部署开启）
+RAG_ADMIN_API_KEY=
+RAG_ADMIN_API_KEY_REQUIRED=true
+
+# 路径/命名空间安全（可选，建议多租户开启）
+# 开启后文档会以 `<namespace>/<path>` 作为逻辑 key 存储，避免跨命名空间误读/误删
+RAG_ENFORCE_NAMESPACE_PATH_PREFIX=true
 
 # CORS 配置
 RAG_CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
@@ -191,6 +219,23 @@ npm run dev  # 访问 http://localhost:5173
 - `GET /metrics/time_series` - 时间序列数据
 - `POST /metrics/export` - 导出性能指标
 - `POST /metrics/clear` - 清空监控数据
+
+### 安全说明（重要）
+
+建议将接口分为两类：
+- 读接口：问答/检索/预览/导出等（使用 `RAG_API_KEY`，或内网环境可关闭）
+- 管理接口：写入/删除/清理/导入/指标导出等（使用 `RAG_ADMIN_API_KEY`）
+
+默认已加硬的管理接口（需要 admin key）：
+- `POST /docs`, `DELETE /docs`, `POST /import`
+- `POST /namespaces/create`, `POST /namespaces/clear`, `DELETE /namespaces`
+- `POST /cache/clear`
+- `POST /metrics/export`, `POST /metrics/clear`
+- `POST /documents/metadata`, `POST /documents/{path}/tags`, `DELETE /documents/{path}/tags`
+
+路径与命名空间：
+- 所有 `path` 参数会做规范化并拒绝 `..`、绝对路径/盘符等输入。
+- 建议多租户场景开启 `RAG_ENFORCE_NAMESPACE_PATH_PREFIX=true`，使文档以 `<namespace>/<path>` 作为逻辑 key 存储。
 
 **检索优化**
 - `POST /retrieval/analyze` - 分析检索质量并提供优化建议
