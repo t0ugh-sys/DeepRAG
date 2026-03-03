@@ -3,7 +3,7 @@
 支持 OCR、表格提取、多格式文档解析
 """
 import os
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Tuple
 from dataclasses import dataclass
 import logging
 
@@ -57,6 +57,55 @@ class DocumentParser:
         else:
             # 回退到简单文本读取
             return self._parse_text(file_path)
+
+    @staticmethod
+    def _build_pdf_text_and_page_info(pages: List[Dict[str, Any]]) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        根据每页提取结果构建最终 text 与 page_info，保证 char_start/char_end 与最终文本严格一致。
+
+        pages 每项格式：
+        - page: int
+        - text: str（该页纯文本，可为空）
+        - segments: List[str]（该页附加片段，如表格 markdown，按出现顺序）
+        """
+        parts: List[str] = []
+        page_info: List[Dict[str, Any]] = []
+        cursor = 0
+
+        for page in pages:
+            page_num = int(page["page"])
+            page_text = str(page.get("text") or "")
+            segments = list(page.get("segments") or [])
+
+            page_segments: List[str] = []
+            if page_text.strip():
+                page_segments.append(page_text)
+            page_segments.extend([s for s in segments if str(s).strip()])
+
+            if not page_segments:
+                continue
+
+            page_start: int | None = None
+            for seg in page_segments:
+                if parts:
+                    parts.append("\n\n")
+                    cursor += 2
+                if page_start is None:
+                    page_start = cursor
+                parts.append(seg)
+                cursor += len(seg)
+
+            page_end = cursor
+            page_info.append(
+                {
+                    "page": page_num,
+                    "text": page_text,
+                    "char_start": page_start if page_start is not None else page_end,
+                    "char_end": page_end,
+                }
+            )
+
+        return "".join(parts), page_info
     
     def _parse_pdf(self, file_path: str) -> ParsedDocument:
         """解析 PDF 文件，提取文本、表格和图片"""
@@ -66,23 +115,18 @@ class DocumentParser:
             logger.warning("pdfplumber 未安装，回退到基础 PDF 解析")
             return self._parse_pdf_basic(file_path)
         
-        text_parts = []
         tables = []
         images = []
-        page_info = []
+        pages: List[Dict[str, Any]] = []
         
         with pdfplumber.open(file_path) as pdf:
+            pages_count = len(pdf.pages)
             for page_num, page in enumerate(pdf.pages, start=1):
+                page_record: Dict[str, Any] = {"page": page_num, "text": "", "segments": []}
+
                 # 提取文本
                 page_text = page.extract_text() or ""
-                if page_text.strip():
-                    text_parts.append(page_text)
-                    page_info.append({
-                        "page": page_num,
-                        "text": page_text,
-                        "char_start": len("\n\n".join(text_parts[:-1])) if len(text_parts) > 1 else 0,
-                        "char_end": len("\n\n".join(text_parts))
-                    })
+                page_record["text"] = page_text
                 
                 # 提取表格
                 page_tables = page.extract_tables()
@@ -90,13 +134,14 @@ class DocumentParser:
                     if table:
                         # 转换表格为 Markdown 格式
                         table_md = self._table_to_markdown(table)
+                        table_number = len(tables) + 1
                         tables.append({
                             "page": page_num,
                             "index": table_idx,
                             "data": table,
                             "markdown": table_md
                         })
-                        text_parts.append(f"\n[表格 {len(tables)}]\n{table_md}\n")
+                        page_record["segments"].append(f"\n[表格 {table_number}]\n{table_md}\n")
                 
                 # 提取图片（如果启用 OCR）
                 if self.enable_ocr:
@@ -107,12 +152,16 @@ class DocumentParser:
                             "index": img_idx,
                             "bbox": (img.get("x0"), img.get("top"), img.get("x1"), img.get("bottom"))
                         })
+
+                pages.append(page_record)
+
+        text, page_info = self._build_pdf_text_and_page_info(pages)
         
         return ParsedDocument(
-            text="\n\n".join(text_parts),
+            text=text,
             tables=tables,
             images=images,
-            metadata={"pages": len(pdf.pages), "format": "pdf"},
+            metadata={"pages": pages_count, "format": "pdf"},
             page_info=page_info
         )
     
