@@ -52,6 +52,7 @@ class VectorStore:
         self._bm25 = BM25Okapi(self._bm25_tokenized) if self._bm25_tokenized else None
         self._meta_key_to_idx = self._build_meta_key_index()
         self._corpus_revision = 0
+        self._bm25_complete_corpus = True
 
         self.collection = None
         self.faiss_index = None
@@ -89,6 +90,26 @@ class VectorStore:
             else:
                 dim = int(self.embedder.get_sentence_embedding_dimension())
                 self.faiss_index = faiss.IndexFlatIP(dim)
+
+        # In Milvus mode, BM25 relies on local meta.jsonl corpus. If Milvus contains more chunks than local corpus,
+        # hybrid fusion will become misleading. Default to disabling BM25 fusion in that case.
+        if self.backend == "milvus" and settings.bm25_enabled and settings.bm25_require_complete_corpus:
+            try:
+                milvus_count = int(getattr(self.collection, "num_entities", 0) or 0) if self.collection is not None else 0
+                local_count = int(len(self.texts))
+                if milvus_count and local_count:
+                    # Allow a small drift (e.g. partial deletes), but reject large mismatches.
+                    drift = abs(milvus_count - local_count)
+                    if drift > max(10, int(milvus_count * 0.05)):
+                        self._bm25_complete_corpus = False
+                elif milvus_count and not local_count:
+                    self._bm25_complete_corpus = False
+                elif not milvus_count and local_count:
+                    # Unable to verify corpus parity; treat as incomplete to avoid misleading hybrid fusion.
+                    self._bm25_complete_corpus = False
+            except Exception:
+                # If we can't determine corpus completeness, fall back to a safe default.
+                self._bm25_complete_corpus = False
 
     @staticmethod
     def _normalize_path(path: str) -> str:
@@ -160,46 +181,58 @@ class VectorStore:
     def search(self, query: str, top_k: int = 4) -> List[RetrievedChunk]:
         if not self.texts and self.collection is None and self.faiss_index is None:
             return []
-        expanded_query = self._expand_query(query)
-        vec = self.embedder.encode([expanded_query], normalize_embeddings=True)
-        vec = np.array(vec).astype("float32")[0]
+        def _vector_candidates(qvec: np.ndarray, k: int) -> List[RetrievedChunk]:
+            out: List[RetrievedChunk] = []
+            if self.backend == "milvus" and self.collection is not None:
+                search_params = {"metric_type": "IP", "params": {"nprobe": 16}}
+                res = self.collection.search(
+                    data=[qvec],
+                    anns_field="embedding",
+                    param=search_params,
+                    limit=k,
+                    output_fields=["path", "chunk_id", "text"],
+                )
+                hits = res[0]
+                for hit in hits:
+                    meta = {"path": hit.entity.get("path"), "chunk_id": int(hit.entity.get("chunk_id"))}
+                    out.append(RetrievedChunk(text=hit.entity.get("text"), score=float(hit.distance), meta=meta))
+                return out
+
+            if self.faiss_index is None:
+                return []
+            import faiss  # type: ignore  # noqa: F401
+            scores, indices = self.faiss_index.search(qvec.reshape(1, -1), k)
+            for score, idx in zip(scores[0], indices[0]):
+                if idx == -1:
+                    continue
+                out.append(RetrievedChunk(text=self.texts[idx], score=float(score), meta=self.metas[idx]))
+            return out
+
+        vec0 = self.embedder.encode([query], normalize_embeddings=True)
+        vec0 = np.array(vec0).astype("float32")[0]
+
+        expanded_query = query
+        if self.settings.query_expand_enabled:
+            expanded_query = self._expand_query(query)
+        vec1: np.ndarray | None = None
+        if expanded_query and expanded_query != query:
+            v = self.embedder.encode([expanded_query], normalize_embeddings=True)
+            vec1 = np.array(v).astype("float32")[0]
 
         results: List[RetrievedChunk] = []
         candidate_k = max(top_k * 4, top_k + 10)
         if self._namespace_prefix():
             candidate_k = max(candidate_k, top_k * 10, 50)
             candidate_k = min(candidate_k, 500)
-        if self.backend == "milvus" and self.collection is not None:
-            search_params = {"metric_type": "IP", "params": {"nprobe": 16}}
-            res = self.collection.search(
-                data=[vec],
-                anns_field="embedding",
-                param=search_params,
-                limit=candidate_k,
-                output_fields=["path", "chunk_id", "text"],
-            )
-            hits = res[0]
-            for hit in hits:
-                meta = {"path": hit.entity.get("path"), "chunk_id": int(hit.entity.get("chunk_id"))}
-                results.append(RetrievedChunk(text=hit.entity.get("text"), score=float(hit.distance), meta=meta))
-            recs = self._fuse_with_bm25(query, _dedupe_results(results), top_k, query_vec=vec)
-            return recs
-
-        if self.faiss_index is None:
-            return []
-        import faiss  # type: ignore
-
-        scores, indices = self.faiss_index.search(vec.reshape(1, -1), candidate_k)
-        for score, idx in zip(scores[0], indices[0]):
-            if idx == -1:
-                continue
-            results.append(RetrievedChunk(text=self.texts[idx], score=float(score), meta=self.metas[idx]))
+        results.extend(_vector_candidates(vec0, candidate_k))
+        if vec1 is not None:
+            results.extend(_vector_candidates(vec1, candidate_k))
 
         # Namespace isolation for shared FAISS index: filter by path prefix when enabled.
         if self._namespace_prefix():
             results = [r for r in results if self._is_in_namespace(r.meta.get("path"))]
 
-        return self._fuse_with_bm25(query, _dedupe_results(results), top_k, query_vec=vec)
+        return self._fuse_with_bm25(query, _dedupe_results(results), top_k, query_vec=vec0)
 
     def _tokenize(self, s: str) -> list[str]:
         try:
@@ -241,7 +274,10 @@ class VectorStore:
 
         bm25_scores: list[float] | None = None
         bm25_top: list[int] = []
-        if settings.bm25_enabled and self._bm25 is not None and self.texts:
+        bm25_enabled = bool(settings.bm25_enabled)
+        if self.backend == "milvus" and settings.bm25_require_complete_corpus and not self._bm25_complete_corpus:
+            bm25_enabled = False
+        if bm25_enabled and self._bm25 is not None and self.texts:
             tokens = self._tokenize(query)
             bm25_scores = [float(s) for s in self._bm25.get_scores(tokens)]
             if bm25_scores:
@@ -286,7 +322,10 @@ class VectorStore:
                     bm_norm = 0.0
                 if bm_norm > 1.0:
                     bm_norm = 1.0
+            r.meta["score_vec"] = vec_norm
+            r.meta["score_bm25"] = bm_norm
             r.score = settings.vec_weight * vec_norm + settings.bm25_weight * bm_norm
+            r.meta["score_fused"] = r.score
             fused.append(r)
 
         fused = [r for r in fused if r.text.strip()]
@@ -536,15 +575,26 @@ class VectorStore:
         return result
 
 
-def build_prompt(question: str, contexts: List[RetrievedChunk], strict_mode: bool = True, custom_system_prompt: str | None = None) -> str:
+def build_prompt(
+    question: str,
+    contexts: List[RetrievedChunk],
+    strict_mode: bool = True,
+    custom_system_prompt: str | None = None,
+    show_scores: bool = False,
+) -> str:
     """Build RAG prompt / 构建检索增强提示。"""
-    has_valid_context = len(contexts) > 0 and any(c.score > 0.1 for c in contexts)
+    # Do not depend on numeric scores here (rerank/fusion score scales differ).
+    has_valid_context = len(contexts) > 0
 
     context_blocks: List[str] = []
     for i, c in enumerate(contexts, start=1):
         path = c.meta.get("path", "")
         filename = path.split("/")[-1] if "/" in path else path.split("\\")[-1] if "\\" in path else path
-        context_blocks.append(f"[{i}] {filename} (score={c.score:.2f})\n{c.text}")
+        if show_scores:
+            context_blocks.append(f"[{i}] {filename} (score={c.score:.2f})\n{c.text}")
+        else:
+            # Default: do not expose numeric scores to the model.
+            context_blocks.append(f"[{i}] {filename}\n{c.text}")
     context_text = "\n\n".join(context_blocks)
 
     if not has_valid_context and strict_mode:
@@ -665,12 +715,14 @@ class RAGPipeline:
         retrieval_options = {
             "rev": getattr(self.store, "_corpus_revision", 0),
             "bm25_enabled": bool(self.settings.bm25_enabled),
+            "bm25_require_complete_corpus": bool(self.settings.bm25_require_complete_corpus),
             "bm25_weight": float(self.settings.bm25_weight),
             "vec_weight": float(self.settings.vec_weight),
             "mmr_lambda": float(self.settings.mmr_lambda),
             "score_threshold": float(self.settings.score_threshold),
             "embedding_model": str(self.settings.embedding_model_name),
             "vector_backend": str(getattr(self.store, "backend", "unknown")),
+            "query_expand_enabled": bool(self.settings.query_expand_enabled),
         }
         cached_result = query_cache.get(question, candidate_k, namespace, retrieval_options)
         if cached_result is not None:
@@ -690,14 +742,19 @@ class RAGPipeline:
             pairs = [[question, r.text] for r in recs]
             scores = self.reranker.compute_score(pairs)
             for r, s in zip(recs, scores):
-                r.score = float(s)
-            recs = sorted(recs, key=lambda x: x.score, reverse=True)
+                r.meta["score_rerank"] = float(s)
+            recs = sorted(recs, key=lambda x: float(x.meta.get("score_rerank", 0.0)), reverse=True)
             context_k = max(k, top_n)
             recs = recs[:context_k]
         else:
             recs = recs[:k]
 
-        prompt = build_prompt(question, recs, strict_mode=self.settings.strict_mode)
+        prompt = build_prompt(
+            question,
+            recs,
+            strict_mode=self.settings.strict_mode,
+            show_scores=bool(self.settings.prompt_show_scores),
+        )
         target_model = model or self.settings.llm_model
         client = self._get_client_for_model(target_model)
         resp = client.chat.completions.create(
@@ -735,12 +792,14 @@ class RAGPipeline:
         retrieval_options = {
             "rev": getattr(self.store, "_corpus_revision", 0),
             "bm25_enabled": bool(self.settings.bm25_enabled),
+            "bm25_require_complete_corpus": bool(self.settings.bm25_require_complete_corpus),
             "bm25_weight": float(self.settings.bm25_weight),
             "vec_weight": float(self.settings.vec_weight),
             "mmr_lambda": float(self.settings.mmr_lambda),
             "score_threshold": float(self.settings.score_threshold),
             "embedding_model": str(self.settings.embedding_model_name),
             "vector_backend": str(getattr(self.store, "backend", "unknown")),
+            "query_expand_enabled": bool(self.settings.query_expand_enabled),
         }
         cached_result = query_cache.get(question, candidate_k, namespace, retrieval_options)
         if cached_result is not None:
@@ -780,8 +839,8 @@ class RAGPipeline:
             pairs = [[question, r.text] for r in recs]
             scores = self.reranker.compute_score(pairs)
             for r, s in zip(recs, scores):
-                r.score = float(s)
-            recs = sorted(recs, key=lambda x: x.score, reverse=True)
+                r.meta["score_rerank"] = float(s)
+            recs = sorted(recs, key=lambda x: float(x.meta.get("score_rerank", 0.0)), reverse=True)
             context_k = max(k, top_n)
             recs = recs[:context_k]
         else:
@@ -799,7 +858,13 @@ class RAGPipeline:
             for w in web_snippets:
                 recs.append(_Tmp(text=w, score=1.0, meta={"path": "web"}))
 
-        prompt = build_prompt(question, recs, strict_mode=self.settings.strict_mode, custom_system_prompt=system_prompt)
+        prompt = build_prompt(
+            question,
+            recs,
+            strict_mode=self.settings.strict_mode,
+            custom_system_prompt=system_prompt,
+            show_scores=bool(self.settings.prompt_show_scores),
+        )
         target_model = model or self.settings.llm_model
         client = self._get_client_for_model(target_model)
 
@@ -856,12 +921,17 @@ class RAGPipeline:
             pairs = [[question, r.text] for r in all_recs]
             scores = self.reranker.compute_score(pairs)
             for r, s in zip(all_recs, scores):
-                r.score = float(s)
-            all_recs = sorted(all_recs, key=lambda x: x.score, reverse=True)[:top_n]
+                r.meta["score_rerank"] = float(s)
+            all_recs = sorted(all_recs, key=lambda x: float(x.meta.get("score_rerank", 0.0)), reverse=True)[:top_n]
         else:
             all_recs = sorted(all_recs, key=lambda x: x.score, reverse=True)[:top_n]
 
-        prompt = build_prompt(question, all_recs, strict_mode=self.settings.strict_mode)
+        prompt = build_prompt(
+            question,
+            all_recs,
+            strict_mode=self.settings.strict_mode,
+            show_scores=bool(self.settings.prompt_show_scores),
+        )
         target_model = model or self.settings.llm_model
         client = self._get_client_for_model(target_model)
         resp = client.chat.completions.create(

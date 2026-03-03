@@ -98,6 +98,9 @@ class Settings:
     # Strict mode / 严格模式
     strict_mode: bool | None = None
     enforce_namespace_path_prefix: bool | None = None
+    query_expand_enabled: bool | None = None
+    bm25_require_complete_corpus: bool | None = None
+    prompt_show_scores: bool | None = None
 
     def __post_init__(self) -> None:
         self.docs_dir = self.docs_dir or os.getenv('RAG_DOCS_DIR', 'data/docs')
@@ -169,6 +172,15 @@ class Settings:
 
         if self.strict_mode is None:
             self.strict_mode = os.getenv('RAG_STRICT_MODE', 'true').lower() in {'1', 'true', 'yes'}
+
+        if self.query_expand_enabled is None:
+            self.query_expand_enabled = os.getenv('RAG_QUERY_EXPAND_ENABLED', 'false').lower() in {'1', 'true', 'yes'}
+
+        if self.bm25_require_complete_corpus is None:
+            self.bm25_require_complete_corpus = os.getenv('RAG_BM25_REQUIRE_COMPLETE_CORPUS', 'true').lower() in {'1', 'true', 'yes'}
+
+        if self.prompt_show_scores is None:
+            self.prompt_show_scores = os.getenv('RAG_PROMPT_SHOW_SCORES', 'false').lower() in {'1', 'true', 'yes'}
 
         if os.getenv('RAG_API_KEY_REQUIRED') is not None:
             self.api_key_required = os.getenv('RAG_API_KEY_REQUIRED', 'false').lower() in {'1', 'true', 'yes'}
