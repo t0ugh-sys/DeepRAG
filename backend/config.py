@@ -75,6 +75,8 @@ class Settings:
     api_key_namespace: str | None = None
     api_key: str | None = None
     api_key_required: bool | None = None
+    admin_api_key: str | None = None
+    admin_api_key_required: bool | None = None
 
     # CORS
     cors_allow_origins: str | None = None
@@ -95,6 +97,7 @@ class Settings:
 
     # Strict mode / 严格模式
     strict_mode: bool | None = None
+    enforce_namespace_path_prefix: bool | None = None
 
     def __post_init__(self) -> None:
         self.docs_dir = self.docs_dir or os.getenv('RAG_DOCS_DIR', 'data/docs')
@@ -140,6 +143,7 @@ class Settings:
         self.namespace_whitelist = self.namespace_whitelist or os.getenv('RAG_NAMESPACE_WHITELIST')
         self.api_key_namespace = self.api_key_namespace or os.getenv('RAG_API_KEY_NAMESPACE')
         self.api_key = self.api_key or os.getenv('RAG_API_KEY')
+        self.admin_api_key = self.admin_api_key or os.getenv('RAG_ADMIN_API_KEY')
 
         self.cors_allow_origins = self.cors_allow_origins or os.getenv(
             'RAG_CORS_ALLOW_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173'
@@ -170,6 +174,15 @@ class Settings:
             self.api_key_required = os.getenv('RAG_API_KEY_REQUIRED', 'false').lower() in {'1', 'true', 'yes'}
         elif self.api_key_required is None:
             self.api_key_required = bool(self.api_key)
+
+        if os.getenv('RAG_ADMIN_API_KEY_REQUIRED') is not None:
+            self.admin_api_key_required = os.getenv('RAG_ADMIN_API_KEY_REQUIRED', 'false').lower() in {'1', 'true', 'yes'}
+        elif self.admin_api_key_required is None:
+            # If admin key is configured, default to requiring it for admin endpoints.
+            self.admin_api_key_required = bool(self.admin_api_key)
+
+        if self.enforce_namespace_path_prefix is None:
+            self.enforce_namespace_path_prefix = os.getenv('RAG_ENFORCE_NAMESPACE_PATH_PREFIX', 'false').lower() in {'1', 'true', 'yes'}
 
         if '*' in self.cors_allow_origins and self.cors_allow_credentials:
             self.cors_allow_credentials = False

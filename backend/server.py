@@ -19,6 +19,7 @@ from backend.utils.responses import success_response, error_response
 from backend.utils.cache import query_cache
 from backend.document_manager import get_document_manager
 from backend.performance_monitor import get_monitor, RequestTimer
+from backend.utils.security import normalize_doc_path, enforce_namespace_prefix, normalize_data_file_path
 
 if TYPE_CHECKING:
     from backend.rag import RAGPipeline
@@ -164,6 +165,29 @@ def _require_api_key(x_api_key: str | None = None) -> None:
     if key != settings.api_key:
         raise HTTPException(status_code=401, detail='Unauthorized')
 
+
+def _require_admin_api_key(x_api_key: str | None = None) -> None:
+    """
+    Admin key is used to protect destructive or sensitive endpoints.
+
+    Backward-compatibility:
+    - If admin key is not configured/required, falls back to normal API key.
+    """
+    if not settings.admin_api_key_required:
+        _require_api_key(x_api_key)
+        return
+    if not settings.admin_api_key:
+        raise HTTPException(status_code=500, detail="Admin API key required but not configured")
+
+    key = x_api_key
+    if not key:
+        request = get_current_request()
+        if request is not None:
+            key = request.headers.get("X-API-Key") or request.headers.get("x-api-key")
+    if key != settings.admin_api_key:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 def _resolve_namespace(namespace: str | None) -> str:
     ns = namespace or settings.default_namespace
     if settings.namespace_whitelist:
@@ -174,6 +198,16 @@ def _resolve_namespace(namespace: str | None) -> str:
         if ns != settings.api_key_namespace:
             raise HTTPException(status_code=403, detail="Namespace not allowed for this API key")
     return ns
+
+
+def _normalize_and_scope_path(raw_path: str, ns: str) -> str:
+    """
+    Normalize doc path and optionally scope it under namespace.
+    """
+    p = normalize_doc_path(raw_path)
+    if settings.enforce_namespace_path_prefix:
+        p = enforce_namespace_prefix(p, ns)
+    return p
 
 
 
@@ -225,7 +259,7 @@ def _create_collection(ns: str) -> None:
 
 @app.post("/namespaces/create")
 def ns_create(namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
-    _require_api_key(x_api_key)
+    _require_admin_api_key(x_api_key)
     ns = _resolve_namespace(namespace)
     try:
         _create_collection(ns)
@@ -236,7 +270,7 @@ def ns_create(namespace: str | None = None, x_api_key: str | None = None) -> JSO
 
 @app.post("/namespaces/clear")
 def ns_clear(namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
-    _require_api_key(x_api_key)
+    _require_admin_api_key(x_api_key)
     ns = _resolve_namespace(namespace)
     try:
         from pymilvus import Collection, utility
@@ -253,7 +287,7 @@ def ns_clear(namespace: str | None = None, x_api_key: str | None = None) -> JSON
 
 @app.delete("/namespaces")
 def ns_delete(namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
-    _require_api_key(x_api_key)
+    _require_admin_api_key(x_api_key)
     ns = _resolve_namespace(namespace)
     try:
         from pymilvus import Collection, utility
@@ -274,6 +308,7 @@ def ask(req: AskRequest, x_api_key: str | None = None, namespace: str | None = N
         raise HTTPException(status_code=503, detail="Service unavailable / 服务不可用")
     ns = _resolve_namespace(namespace)
     local = _get_pipeline(ns)
+    scoped_path = _normalize_and_scope_path(path, ns)
     answer, recs = local.ask(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n, req.model)
     sources: List[SourceItem] = []
     for r in recs:
@@ -761,7 +796,7 @@ def preview_document_chunks(path: str, x_api_key: str | None = None, namespace: 
     try:
         chunks_preview = []
         for i, (text, meta) in enumerate(zip(local.store.texts, local.store.metas)):
-            if meta.get("path") == path:
+            if _normalize_and_scope_path(str(meta.get("path", "")), ns) == scoped_path:
                 chunks_preview.append({
                     "chunk_id": meta.get("chunk_id", i),
                     "preview": text[:100] + "..." if len(text) > 100 else text,
@@ -775,7 +810,7 @@ def preview_document_chunks(path: str, x_api_key: str | None = None, namespace: 
         chunks_preview.sort(key=lambda x: x["chunk_id"])
         
         return success_response(data={
-            "path": path,
+            "path": scoped_path,
             "total_chunks": len(chunks_preview),
             "chunks": chunks_preview
         })
@@ -802,7 +837,7 @@ async def upsert_doc(
     x_api_key: str | None = None, 
     namespace: str | None = None
 ) -> JSONResponse:  # type: ignore[override]
-    _require_api_key(x_api_key)
+    _require_admin_api_key(x_api_key)
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "Service unavailable / 服务不可用"}, status_code=503)
     ns = _resolve_namespace(namespace)
@@ -854,13 +889,13 @@ async def upsert_doc(
         if not final_path or text is None:
             return JSONResponse({"ok": False, "error": "Invalid request / 请求无效"}, status_code=400)
         
-        final_path = final_path.replace("\\", "/")
+        final_path = _normalize_and_scope_path(final_path, ns)
         added = local.add_document(final_path, text or "")
         doc_manager.update_document(final_path, chunk_count=added)
-        logger.info(f"RAG pipeline info / RAG 流水线信息: {final_path} {added}")
+        logger.info("RAG pipeline info: upserted %s chunks=%s", final_path, added)
         return JSONResponse({"ok": True, "added_chunks": added})
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {final_path} {str(e)}")
+        logger.error("RAG pipeline error: upsert failed path=%s error=%s", final_path, str(e))
         import traceback
         logger.error(traceback.format_exc())
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
@@ -868,14 +903,15 @@ async def upsert_doc(
 
 @app.delete("/docs")
 def delete_doc(path: str, x_api_key: str | None = None, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
-    _require_api_key(x_api_key)
+    _require_admin_api_key(x_api_key)
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "Service unavailable / 服务不可用"}, status_code=503)
     ns = _resolve_namespace(namespace)
     local = _get_pipeline(ns)
     try:
-        deleted = local.delete_document(path)
-        doc_manager.delete_document(path)
+        scoped_path = _normalize_and_scope_path(path, ns)
+        deleted = local.delete_document(scoped_path)
+        doc_manager.delete_document(scoped_path)
         return JSONResponse({"ok": True, "deleted": deleted})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
@@ -892,7 +928,8 @@ def list_doc_paths(limit: int = 1000, namespace: str | None = None) -> JSONRespo
 
 
 @app.get("/export")
-def export_by_path(path: str, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
+def export_by_path(path: str, namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
+    _require_api_key(x_api_key)
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "Service unavailable / 服务不可用"}, status_code=503)
     
@@ -901,24 +938,25 @@ def export_by_path(path: str, namespace: str | None = None) -> JSONResponse:  # 
         local = _get_pipeline(ns)
         store = local.store
         backend = getattr(store, "backend", "faiss")
+        scoped_path = _normalize_and_scope_path(path, ns)
         
         chunks = []
         
         if backend == "milvus" and store.collection is not None:
-            escaped = path.replace("'", "\\'")
+            escaped = scoped_path.replace("'", "\\'")
             expr = "path == '" + escaped + "'"
             recs = store.collection.query(expr=expr, output_fields=["path", "chunk_id", "text"], limit=10000)
             chunks = recs
         else:
             for i, meta in enumerate(store.metas):
-                if meta.get("path") == path:
+                if _normalize_and_scope_path(str(meta.get("path", "")), ns) == scoped_path:
                     chunks.append({
-                        "path": path,
+                        "path": scoped_path,
                         "chunk_id": meta.get("chunk_id", i),
                         "text": store.texts[i] if i < len(store.texts) else ""
                     })
         
-        return JSONResponse({"ok": True, "path": path, "chunks": chunks})
+        return JSONResponse({"ok": True, "path": scoped_path, "chunks": chunks})
     except Exception as e:
         logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
@@ -926,7 +964,7 @@ def export_by_path(path: str, namespace: str | None = None) -> JSONResponse:  # 
 
 @app.post("/import")
 def import_chunks(payload: Dict[str, Any], x_api_key: str | None = None, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
-    _require_api_key(x_api_key)
+    _require_admin_api_key(x_api_key)
     if pipeline is None:
         return JSONResponse({"ok": False, "error": "Service unavailable / 服务不可用"}, status_code=503)
     try:
@@ -934,17 +972,18 @@ def import_chunks(payload: Dict[str, Any], x_api_key: str | None = None, namespa
         chunks = payload.get("chunks") or []
         if not path or not isinstance(chunks, list):
             return JSONResponse({"ok": False, "error": "invalid payload"}, status_code=400)
+        ns = _resolve_namespace(namespace)
+        scoped_path = _normalize_and_scope_path(str(path), ns)
         try:
-            ns = _resolve_namespace(namespace)
             local = _get_pipeline(ns)
-            local.delete_document(path)
+            local.delete_document(scoped_path)
         except Exception:
             pass
         combined = "\n\n".join([c.get("text", "") for c in chunks])
-        ns = _resolve_namespace(namespace)
         local = _get_pipeline(ns)
-        added = local.add_document(path, combined)
-        return JSONResponse({"ok": True, "added": added})
+        added = local.add_document(scoped_path, combined)
+        doc_manager.update_document(scoped_path, chunk_count=added)
+        return JSONResponse({"ok": True, "path": scoped_path, "added": added})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
@@ -961,10 +1000,9 @@ def cache_stats(x_api_key: str | None = None) -> JSONResponse:  # type: ignore[o
 
 @app.post("/cache/clear")
 def cache_clear(x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
-    _require_api_key(x_api_key)
+    _require_admin_api_key(x_api_key)
     query_cache.clear()
-    logger.info("RAG pipeline info / RAG 流水线信息")
-    return JSONResponse({"ok": False, "error": "Invalid request / 请求无效"}, status_code=400)
+    return JSONResponse({"ok": True, "cleared": True})
 
 
 from backend.conversation import ConversationManager
@@ -1060,12 +1098,13 @@ def get_time_series(interval_seconds: int = 60, x_api_key: str | None = None) ->
 
 @app.post("/metrics/export")
 def export_metrics(filepath: str = "data/metrics/export.json", x_api_key: str | None = None) -> Dict[str, Any]:
-    _require_api_key(x_api_key)
+    _require_admin_api_key(x_api_key)
     monitor = get_monitor()
     
     try:
-        monitor.export_metrics(filepath)
-        return success_response(data={"filepath": filepath, "message": "Success / 成功"})
+        safe_path = normalize_data_file_path(filepath, base_dir="data")
+        monitor.export_metrics(safe_path)
+        return success_response(data={"filepath": safe_path, "message": "Success / 成功"})
     except Exception as e:
         logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
         return error_response(message=str(e))
@@ -1073,7 +1112,7 @@ def export_metrics(filepath: str = "data/metrics/export.json", x_api_key: str | 
 
 @app.post("/metrics/clear")
 def clear_metrics(x_api_key: str | None = None) -> Dict[str, Any]:
-    _require_api_key(x_api_key)
+    _require_admin_api_key(x_api_key)
     monitor = get_monitor()
     monitor.clear_history()
     
@@ -1092,10 +1131,12 @@ class UpdateDocumentRequest(BaseModel):
 
 
 @app.post("/documents/metadata")
-def update_document_metadata(req: UpdateDocumentRequest, x_api_key: str | None = None) -> Dict[str, Any]:
-    _require_api_key(x_api_key)
+def update_document_metadata(req: UpdateDocumentRequest, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
+    _require_admin_api_key(x_api_key)
     
     try:
+        ns = _resolve_namespace(namespace)
+        scoped_path = _normalize_and_scope_path(req.path, ns)
         update_data = {}
         if req.tags is not None:
             update_data["tags"] = req.tags
@@ -1104,11 +1145,11 @@ def update_document_metadata(req: UpdateDocumentRequest, x_api_key: str | None =
         if req.description is not None:
             update_data["description"] = req.description
         
-        doc_manager.update_document(req.path, **update_data)
+        doc_manager.update_document(scoped_path, **update_data)
         
         return success_response(data={
-            "path": req.path,
-            "metadata": doc_manager.get_document(req.path)
+            "path": scoped_path,
+            "metadata": doc_manager.get_document(scoped_path)
         })
     except Exception as e:
         logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
@@ -1116,10 +1157,12 @@ def update_document_metadata(req: UpdateDocumentRequest, x_api_key: str | None =
 
 
 @app.get("/documents/metadata/{path:path}")
-def get_document_metadata(path: str, x_api_key: str | None = None) -> Dict[str, Any]:
+def get_document_metadata(path: str, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
     _require_api_key(x_api_key)
     
-    metadata = doc_manager.get_document(path)
+    ns = _resolve_namespace(namespace)
+    scoped_path = _normalize_and_scope_path(path, ns)
+    metadata = doc_manager.get_document(scoped_path)
     if not metadata:
         return error_response(message="Document not found / 文档不存在")
     
@@ -1198,14 +1241,16 @@ def get_document_statistics(x_api_key: str | None = None) -> Dict[str, Any]:
 
 
 @app.post("/documents/{path:path}/tags")
-def add_document_tags(path: str, tags: List[str], x_api_key: str | None = None) -> Dict[str, Any]:
-    _require_api_key(x_api_key)
+def add_document_tags(path: str, tags: List[str], x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
+    _require_admin_api_key(x_api_key)
     
     try:
-        doc_manager.metadata.add_tags(path, tags)
+        ns = _resolve_namespace(namespace)
+        scoped_path = _normalize_and_scope_path(path, ns)
+        doc_manager.metadata.add_tags(scoped_path, tags)
         return success_response(data={
-            "path": path,
-            "tags": doc_manager.get_document(path).get("tags", [])
+            "path": scoped_path,
+            "tags": (doc_manager.get_document(scoped_path) or {}).get("tags", [])
         })
     except Exception as e:
         logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
@@ -1213,14 +1258,16 @@ def add_document_tags(path: str, tags: List[str], x_api_key: str | None = None) 
 
 
 @app.delete("/documents/{path:path}/tags")
-def remove_document_tags(path: str, tags: List[str], x_api_key: str | None = None) -> Dict[str, Any]:
-    _require_api_key(x_api_key)
+def remove_document_tags(path: str, tags: List[str], x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
+    _require_admin_api_key(x_api_key)
     
     try:
-        doc_manager.metadata.remove_tags(path, tags)
+        ns = _resolve_namespace(namespace)
+        scoped_path = _normalize_and_scope_path(path, ns)
+        doc_manager.metadata.remove_tags(scoped_path, tags)
         return success_response(data={
-            "path": path,
-            "tags": doc_manager.get_document(path).get("tags", [])
+            "path": scoped_path,
+            "tags": (doc_manager.get_document(scoped_path) or {}).get("tags", [])
         })
     except Exception as e:
         logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
