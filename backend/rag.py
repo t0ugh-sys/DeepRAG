@@ -131,6 +131,22 @@ class VectorStore:
         self._meta_key_to_idx = self._build_meta_key_index()
         self._corpus_revision += 1
 
+    def _namespace_prefix(self) -> str:
+        if not getattr(self.settings, "enforce_namespace_path_prefix", False):
+            return ""
+        ns = (self.namespace or "").strip()
+        if not ns or ns == "default":
+            return ""
+        return f"{ns}/"
+
+    def _is_in_namespace(self, path: str | None) -> bool:
+        prefix = self._namespace_prefix()
+        if not prefix:
+            return True
+        if not path:
+            return False
+        return str(path).replace("\\", "/").startswith(prefix)
+
     def _expand_query(self, query: str) -> str:
         """Expand query by keywords / 关键词扩展。"""
         try:
@@ -150,6 +166,9 @@ class VectorStore:
 
         results: List[RetrievedChunk] = []
         candidate_k = max(top_k * 4, top_k + 10)
+        if self._namespace_prefix():
+            candidate_k = max(candidate_k, top_k * 10, 50)
+            candidate_k = min(candidate_k, 500)
         if self.backend == "milvus" and self.collection is not None:
             search_params = {"metric_type": "IP", "params": {"nprobe": 16}}
             res = self.collection.search(
@@ -175,6 +194,10 @@ class VectorStore:
             if idx == -1:
                 continue
             results.append(RetrievedChunk(text=self.texts[idx], score=float(score), meta=self.metas[idx]))
+
+        # Namespace isolation for shared FAISS index: filter by path prefix when enabled.
+        if self._namespace_prefix():
+            results = [r for r in results if self._is_in_namespace(r.meta.get("path"))]
 
         return self._fuse_with_bm25(query, _dedupe_results(results), top_k, query_vec=vec)
 
@@ -226,7 +249,11 @@ class VectorStore:
                 arr = np.asarray(bm25_scores, dtype="float32")
                 idxs = np.argpartition(-arr, bm25_k - 1)[:bm25_k]
                 idxs = idxs[np.argsort(-arr[idxs])]
-                bm25_top = [int(i) for i in idxs.tolist()]
+                bm25_top = []
+                for i in idxs.tolist():
+                    ii = int(i)
+                    if 0 <= ii < len(self.metas) and self._is_in_namespace(self.metas[ii].get("path")):
+                        bm25_top.append(ii)
 
         candidates: Dict[int, RetrievedChunk] = {}
         for idx, r in vec_by_idx.items():
@@ -476,6 +503,8 @@ class VectorStore:
         paths: List[str] = []
         for m in self.metas:
             p = m.get("path")
+            if not self._is_in_namespace(p):
+                continue
             if p and p not in seen:
                 seen.add(p)
                 paths.append(p)
@@ -495,7 +524,7 @@ class VectorStore:
                 recs = []
             path_chunks = Counter(r.get("path") for r in recs if r.get("path"))
         else:
-            path_chunks = Counter(m.get("path") for m in self.metas if m.get("path"))
+            path_chunks = Counter(m.get("path") for m in self.metas if m.get("path") and self._is_in_namespace(m.get("path")))
 
         result = []
         for path, chunk_count in list(path_chunks.items())[:limit]:

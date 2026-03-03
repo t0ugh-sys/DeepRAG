@@ -1011,33 +1011,40 @@ conv_manager = ConversationManager()
 
 
 @app.post("/conversations")
-def create_conversation(title: str = "New conversation / 新对话", namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
+def create_conversation(title: str = "New conversation / 新对话", namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
+    _require_api_key(x_api_key)
     ns = _resolve_namespace(namespace)
     conversation = conv_manager.create_conversation(title=title, namespace=ns)
     return JSONResponse({"ok": True, "conversation": conversation.to_dict()})
 
 
 @app.get("/conversations")
-def list_conversations(namespace: str | None = None, limit: int = 50, query: str | None = None) -> JSONResponse:  # type: ignore[override]
+def list_conversations(namespace: str | None = None, limit: int = 50, query: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
+    _require_api_key(x_api_key)
     ns = _resolve_namespace(namespace)
     conversations = conv_manager.list_conversations(namespace=ns, limit=limit, query=query)
     return JSONResponse({"ok": True, "conversations": conversations})
 
 
 @app.get("/conversations/{conv_id}")
-def get_conversation(conv_id: str) -> JSONResponse:  # type: ignore[override]
+def get_conversation(conv_id: str, namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
+    _require_api_key(x_api_key)
+    ns = _resolve_namespace(namespace)
     conversation = conv_manager.get_conversation(conv_id)
-    if not conversation:
+    if not conversation or conversation.namespace != ns:
         return JSONResponse({"ok": False, "error": "Not found / 未找到"}, status_code=404)
     return JSONResponse({"ok": True, "conversation": conversation.to_dict()})
 
 
 @app.delete("/conversations/{conv_id}")
-def delete_conversation_endpoint(conv_id: str) -> JSONResponse:  # type: ignore[override]
+def delete_conversation_endpoint(conv_id: str, namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
+    _require_admin_api_key(x_api_key)
+    ns = _resolve_namespace(namespace)
+    conversation = conv_manager.get_conversation(conv_id)
+    if not conversation or conversation.namespace != ns:
+        return JSONResponse({"ok": False, "error": "Not found / 未找到"}, status_code=404)
     success = conv_manager.delete_conversation(conv_id)
-    if success:
-        return JSONResponse({"ok": False, "error": "Invalid request / 请求无效"}, status_code=400)
-    return JSONResponse({"ok": False, "error": "Not found / 未找到"}, status_code=404)
+    return JSONResponse({"ok": True, "deleted": bool(success)})
 
 
 @app.post("/conversations/{conv_id}/messages")
@@ -1045,8 +1052,15 @@ def add_message_to_conversation(
     conv_id: str,
     role: str,
     content: str,
-    sources: List[Dict[str, Any]] | None = None
+    sources: List[Dict[str, Any]] | None = None,
+    namespace: str | None = None,
+    x_api_key: str | None = None,
 ) -> JSONResponse:  # type: ignore[override]
+    _require_api_key(x_api_key)
+    ns = _resolve_namespace(namespace)
+    existing = conv_manager.get_conversation(conv_id)
+    if not existing or existing.namespace != ns:
+        return JSONResponse({"ok": False, "error": "Not found / 未找到"}, status_code=404)
     conversation = conv_manager.add_message(conv_id, role, content, sources)
     if not conversation:
         return JSONResponse({"ok": False, "error": "Not found / 未找到"}, status_code=404)
