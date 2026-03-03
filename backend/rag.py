@@ -244,10 +244,24 @@ class VectorStore:
             vec1 = np.array(v).astype("float32")[0]
 
         results: List[RetrievedChunk] = []
-        candidate_k = max(top_k * 4, top_k + 10)
-        if self._namespace_prefix():
-            candidate_k = max(candidate_k, top_k * 10, 50)
-            candidate_k = min(candidate_k, 500)
+        mult = int(self.settings.candidate_k_mult or 4)
+        k_min = int(self.settings.candidate_k_min or 20)
+        k_max = int(self.settings.candidate_k_max or 200)
+        candidate_k = max(top_k * mult, top_k + 10, k_min)
+        candidate_k = min(candidate_k, k_max)
+
+        # When using a shared local corpus with namespace prefix filtering, scale candidate_k by corpus ratio
+        # to reduce both "too few after filter" and "overly huge pool" issues.
+        if self._namespace_prefix() and self.texts:
+            try:
+                prefix = self._namespace_prefix()
+                in_ns = sum(1 for m in self.metas if str(m.get("path", "")).replace("\\", "/").startswith(prefix))
+                ratio = float(in_ns) / float(len(self.metas) or 1)
+                ratio = max(ratio, 0.05)  # guard for tiny namespaces
+                scaled = int(candidate_k / ratio)
+                candidate_k = min(max(candidate_k, scaled), k_max)
+            except Exception:
+                pass
         results.extend(_vector_candidates(vec0, candidate_k))
         if vec1 is not None:
             results.extend(_vector_candidates(vec1, candidate_k))
@@ -764,6 +778,9 @@ class RAGPipeline:
             "embedding_model": str(self.settings.embedding_model_name),
             "vector_backend": str(getattr(self.store, "backend", "unknown")),
             "query_expand_enabled": bool(self.settings.query_expand_enabled),
+            "candidate_k_mult": int(self.settings.candidate_k_mult or 0),
+            "candidate_k_min": int(self.settings.candidate_k_min or 0),
+            "candidate_k_max": int(self.settings.candidate_k_max or 0),
         }
         cached_result = query_cache.get(question, candidate_k, namespace, retrieval_options)
         if cached_result is not None:
@@ -842,6 +859,9 @@ class RAGPipeline:
             "embedding_model": str(self.settings.embedding_model_name),
             "vector_backend": str(getattr(self.store, "backend", "unknown")),
             "query_expand_enabled": bool(self.settings.query_expand_enabled),
+            "candidate_k_mult": int(self.settings.candidate_k_mult or 0),
+            "candidate_k_min": int(self.settings.candidate_k_min or 0),
+            "candidate_k_max": int(self.settings.candidate_k_max or 0),
         }
         cached_result = query_cache.get(question, candidate_k, namespace, retrieval_options)
         if cached_result is not None:
@@ -888,19 +908,6 @@ class RAGPipeline:
         else:
             recs = recs[:k]
 
-        if web_snippets:
-            from dataclasses import dataclass
-
-            @dataclass
-            class _Tmp:
-                text: str
-                score: float
-                meta: dict
-
-            for idx, w in enumerate(web_snippets):
-                # Keep web snippets clearly separated and untrusted.
-                recs.append(_Tmp(text=w, score=0.0, meta={"path": "web", "chunk_id": idx, "source": "web"}))
-
         prompt = build_prompt(
             question,
             recs,
@@ -908,6 +915,14 @@ class RAGPipeline:
             custom_system_prompt=system_prompt,
             show_scores=bool(self.settings.prompt_show_scores),
         )
+        if web_snippets:
+            web_block = "\n\n".join(web_snippets)
+            prompt = (
+                f"{prompt}\n\n"
+                f"{'=' * 60}\n"
+                "Web Context (untrusted) / 联网片段（不保证准确）：\n"
+                f"{web_block}\n"
+            )
         target_model = model or self.settings.llm_model
         client = self._get_client_for_model(target_model)
 

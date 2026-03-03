@@ -95,6 +95,9 @@ class Settings:
     score_threshold: float | None = None
     mmr_lambda: float | None = None
     bm25_full_scan_max_docs: int | None = None
+    candidate_k_mult: int | None = None
+    candidate_k_min: int | None = None
+    candidate_k_max: int | None = None
 
     # Strict mode / 严格模式
     strict_mode: bool | None = None
@@ -172,6 +175,12 @@ class Settings:
             self.mmr_lambda = float(os.getenv('RAG_MMR_LAMBDA', '0.7'))
         if self.bm25_full_scan_max_docs is None:
             self.bm25_full_scan_max_docs = int(os.getenv('RAG_BM25_FULL_SCAN_MAX_DOCS', '20000'))
+        if self.candidate_k_mult is None:
+            self.candidate_k_mult = int(os.getenv('RAG_CANDIDATE_K_MULT', '4'))
+        if self.candidate_k_min is None:
+            self.candidate_k_min = int(os.getenv('RAG_CANDIDATE_K_MIN', '20'))
+        if self.candidate_k_max is None:
+            self.candidate_k_max = int(os.getenv('RAG_CANDIDATE_K_MAX', '200'))
 
         if self.strict_mode is None:
             self.strict_mode = os.getenv('RAG_STRICT_MODE', 'true').lower() in {'1', 'true', 'yes'}
