@@ -94,6 +94,7 @@ class Settings:
     vec_weight: float | None = None
     score_threshold: float | None = None
     mmr_lambda: float | None = None
+    bm25_full_scan_max_docs: int | None = None
 
     # Strict mode / 严格模式
     strict_mode: bool | None = None
@@ -169,6 +170,8 @@ class Settings:
             self.score_threshold = float(os.getenv('RAG_SCORE_THRESHOLD', '0.0'))
         if self.mmr_lambda is None:
             self.mmr_lambda = float(os.getenv('RAG_MMR_LAMBDA', '0.7'))
+        if self.bm25_full_scan_max_docs is None:
+            self.bm25_full_scan_max_docs = int(os.getenv('RAG_BM25_FULL_SCAN_MAX_DOCS', '20000'))
 
         if self.strict_mode is None:
             self.strict_mode = os.getenv('RAG_STRICT_MODE', 'true').lower() in {'1', 'true', 'yes'}

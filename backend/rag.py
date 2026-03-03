@@ -152,6 +152,30 @@ class VectorStore:
         self._meta_key_to_idx = self._build_meta_key_index()
         self._corpus_revision += 1
 
+    def _bm25_score_for_doc(self, doc_index: int, query_tokens: list[str]) -> float:
+        """
+        Compute BM25 score for a single document to avoid full-corpus scoring on large corpora.
+        """
+        if self._bm25 is None:
+            return 0.0
+        try:
+            doc_freqs = self._bm25.doc_freqs[doc_index]
+            doc_len = self._bm25.doc_len[doc_index]
+            avgdl = float(self._bm25.avgdl) if self._bm25.avgdl else 1.0
+            k1 = float(getattr(self._bm25, "k1", 1.5))
+            b = float(getattr(self._bm25, "b", 0.75))
+            score = 0.0
+            for tok in query_tokens:
+                freq = doc_freqs.get(tok)
+                if not freq:
+                    continue
+                idf = float(self._bm25.idf.get(tok, 0.0))
+                denom = float(freq) + k1 * (1 - b + b * float(doc_len) / avgdl)
+                score += idf * (float(freq) * (k1 + 1)) / (denom or 1.0)
+            return float(score)
+        except Exception:
+            return 0.0
+
     def _namespace_prefix(self) -> str:
         if not getattr(self.settings, "enforce_namespace_path_prefix", False):
             return ""
@@ -273,23 +297,31 @@ class VectorStore:
                 vec_by_idx[idx] = r
 
         bm25_scores: list[float] | None = None
+        bm25_score_by_idx: Dict[int, float] = {}
         bm25_top: list[int] = []
         bm25_enabled = bool(settings.bm25_enabled)
         if self.backend == "milvus" and settings.bm25_require_complete_corpus and not self._bm25_complete_corpus:
             bm25_enabled = False
         if bm25_enabled and self._bm25 is not None and self.texts:
             tokens = self._tokenize(query)
-            bm25_scores = [float(s) for s in self._bm25.get_scores(tokens)]
-            if bm25_scores:
-                bm25_k = min(len(bm25_scores), max(top_k * 4, 20))
-                arr = np.asarray(bm25_scores, dtype="float32")
-                idxs = np.argpartition(-arr, bm25_k - 1)[:bm25_k]
-                idxs = idxs[np.argsort(-arr[idxs])]
-                bm25_top = []
-                for i in idxs.tolist():
-                    ii = int(i)
-                    if 0 <= ii < len(self.metas) and self._is_in_namespace(self.metas[ii].get("path")):
-                        bm25_top.append(ii)
+            # Full-corpus BM25 scoring is O(N * |q|). For large corpora, score only candidates.
+            if len(self.texts) <= int(settings.bm25_full_scan_max_docs or 0):
+                bm25_scores = [float(s) for s in self._bm25.get_scores(tokens)]
+                if bm25_scores:
+                    bm25_k = min(len(bm25_scores), max(top_k * 4, 20))
+                    arr = np.asarray(bm25_scores, dtype="float32")
+                    idxs = np.argpartition(-arr, bm25_k - 1)[:bm25_k]
+                    idxs = idxs[np.argsort(-arr[idxs])]
+                    bm25_top = []
+                    for i in idxs.tolist():
+                        ii = int(i)
+                        if 0 <= ii < len(self.metas) and self._is_in_namespace(self.metas[ii].get("path")):
+                            bm25_top.append(ii)
+            else:
+                candidate_indices = [i for i in candidates.keys() if i >= 0]
+                for idx in candidate_indices:
+                    if 0 <= idx < len(self.texts) and self._is_in_namespace(self.metas[idx].get("path")):
+                        bm25_score_by_idx[idx] = self._bm25_score_for_doc(idx, tokens)
 
         candidates: Dict[int, RetrievedChunk] = {}
         for idx, r in vec_by_idx.items():
@@ -311,6 +343,8 @@ class VectorStore:
                 bm25_max = max(bm25_scores) or 1.0
             except Exception:
                 bm25_max = 1.0
+        elif bm25_score_by_idx:
+            bm25_max = max(bm25_score_by_idx.values()) or 1.0
 
         fused: List[RetrievedChunk] = []
         for idx, r in candidates.items():
@@ -318,6 +352,12 @@ class VectorStore:
             bm_norm = 0.0
             if bm25_scores and 0 <= idx < len(bm25_scores):
                 bm_norm = float(bm25_scores[idx] / (bm25_max or 1.0))
+                if bm_norm < 0.0:
+                    bm_norm = 0.0
+                if bm_norm > 1.0:
+                    bm_norm = 1.0
+            elif idx in bm25_score_by_idx:
+                bm_norm = float(bm25_score_by_idx[idx] / (bm25_max or 1.0))
                 if bm_norm < 0.0:
                     bm_norm = 0.0
                 if bm_norm > 1.0:
@@ -716,6 +756,7 @@ class RAGPipeline:
             "rev": getattr(self.store, "_corpus_revision", 0),
             "bm25_enabled": bool(self.settings.bm25_enabled),
             "bm25_require_complete_corpus": bool(self.settings.bm25_require_complete_corpus),
+            "bm25_full_scan_max_docs": int(self.settings.bm25_full_scan_max_docs or 0),
             "bm25_weight": float(self.settings.bm25_weight),
             "vec_weight": float(self.settings.vec_weight),
             "mmr_lambda": float(self.settings.mmr_lambda),
@@ -793,6 +834,7 @@ class RAGPipeline:
             "rev": getattr(self.store, "_corpus_revision", 0),
             "bm25_enabled": bool(self.settings.bm25_enabled),
             "bm25_require_complete_corpus": bool(self.settings.bm25_require_complete_corpus),
+            "bm25_full_scan_max_docs": int(self.settings.bm25_full_scan_max_docs or 0),
             "bm25_weight": float(self.settings.bm25_weight),
             "vec_weight": float(self.settings.vec_weight),
             "mmr_lambda": float(self.settings.mmr_lambda),
@@ -855,8 +897,9 @@ class RAGPipeline:
                 score: float
                 meta: dict
 
-            for w in web_snippets:
-                recs.append(_Tmp(text=w, score=1.0, meta={"path": "web"}))
+            for idx, w in enumerate(web_snippets):
+                # Keep web snippets clearly separated and untrusted.
+                recs.append(_Tmp(text=w, score=0.0, meta={"path": "web", "chunk_id": idx, "source": "web"}))
 
         prompt = build_prompt(
             question,
@@ -903,14 +946,16 @@ class RAGPipeline:
         rewritten_queries = self.query_rewriter.rewrite_for_retrieval(question, strategy)
         k = top_k or self.settings.top_k
         all_recs: List[RetrievedChunk] = []
-        seen_texts = set()
+        seen = set()
 
         for query in rewritten_queries:
             recs = self.store.search(query, k)
             for rec in recs:
-                if rec.text not in seen_texts:
-                    seen_texts.add(rec.text)
-                    all_recs.append(rec)
+                key = (rec.meta.get("path"), rec.meta.get("chunk_id"), rec.text[:200])
+                if key in seen:
+                    continue
+                seen.add(key)
+                all_recs.append(rec)
 
         use_rr = (self.reranker is not None) and (
             self.settings.reranker_enabled if rerank_enabled is None else rerank_enabled
@@ -946,7 +991,7 @@ class RAGPipeline:
             "rewritten_queries": rewritten_queries,
             "strategy": strategy,
             "total_retrieved": len(all_recs),
-            "unique_documents": len(seen_texts),
+            "unique_chunks": len(seen),
         }
         return answer, all_recs, metadata
 
