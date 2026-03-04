@@ -41,17 +41,17 @@ def _ensure_index_ready() -> None:
     if os.path.exists(meta_path) and os.path.getsize(meta_path) > 0:
         return
 
-    logger.info("Index missing, starting auto-ingest / 索引缺失，开始自动入库")
+    logger.info("Index missing; starting auto-ingest")
     docs = load_documents(settings.docs_dir)
     if not docs:
-        logger.warning("No documents found to ingest / 未找到可入库文档")
+        logger.warning("No documents found to ingest")
         return
 
     build_index(docs, settings, settings.index_dir)
     doc_manager = get_document_manager()
     for doc in docs:
         doc_manager.add_document(doc["path"], content=doc.get("text", ""))
-    logger.info("Auto-ingest completed / 自动入库完成")
+    logger.info("Auto-ingest completed")
 
 def _get_pipeline(ns: str) -> RAGPipeline:
     # Lazy import to keep module import lightweight for unit tests.
@@ -66,19 +66,17 @@ def _get_pipeline(ns: str) -> RAGPipeline:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("RAG pipeline info / RAG 流水线信息")
+    logger.info("RAG pipeline starting")
     global pipeline
     global pipelines
     try:
-        logger.info("RAG pipeline info / RAG 流水线信息")
         _ensure_index_ready()
         pipeline = _get_pipeline(settings.default_namespace)
-        logger.info("RAG pipeline info / RAG 流水线信息")
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline startup failed")
         raise
     yield
-    logger.info("RAG pipeline info / RAG 流水线信息")
+    logger.info("RAG pipeline stopped")
 
 app = FastAPI(
     title="Local RAG API",
