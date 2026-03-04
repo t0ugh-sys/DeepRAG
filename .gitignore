@@ -40,3 +40,8 @@ logs/
 .coverage
 htmlcov/
 .tox/
+
+# Local TODO (do not commit)
+to_do.md
+todo.md
+TODO.md
