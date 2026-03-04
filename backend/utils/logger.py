@@ -7,6 +7,13 @@ def setup_logger(name: str = "rag", level: str = "INFO") -> logging.Logger:
     """配置结构化日志输出"""
     logger = logging.getLogger(name)
     logger.setLevel(getattr(logging, level.upper(), logging.INFO))
+
+    # Best-effort: ensure UTF-8 output on Windows consoles to avoid garbled Chinese logs.
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except Exception:
+        pass
     
     # 避免重复添加 handler
     if logger.handlers:

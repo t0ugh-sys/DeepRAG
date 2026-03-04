@@ -306,7 +306,6 @@ def ask(req: AskRequest, x_api_key: str | None = None, namespace: str | None = N
         raise HTTPException(status_code=503, detail="Service unavailable / 服务不可用")
     ns = _resolve_namespace(namespace)
     local = _get_pipeline(ns)
-    scoped_path = _normalize_and_scope_path(path, ns)
     answer, recs = local.ask(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n, req.model)
     sources: List[SourceItem] = []
     for r in recs:
