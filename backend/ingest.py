@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 import numpy as np
 
@@ -179,6 +179,93 @@ def split_text(text: str, chunk_size: int = 400, chunk_overlap: int = 80) -> Lis
     return [c for c in chunks if c.strip()]
 
 
+def split_text_with_offsets(text: str, chunk_size: int = 400, chunk_overlap: int = 80) -> List[Tuple[str, int]]:
+    """
+    分块并返回每个 chunk 在原始文本中的起始 offset（基于归一化后的文本）。
+
+    说明：为保持兼容性，chunk 文本内容与 `split_text()` 一致；offset 用于页码映射，
+    避免 `text.find(chunk)` 在重复片段场景下错配到更早的出现位置。
+    """
+    norm_text = text.replace("\r\n", "\n")
+
+    blocks: List[str] = []
+    buf: List[str] = []
+    in_code = False
+    min_chunk_lines = 3
+
+    def flush() -> None:
+        if buf and len(buf) >= min_chunk_lines:
+            blocks.append("\n".join(buf).strip())
+            buf.clear()
+
+    for raw in norm_text.splitlines():
+        line = raw.rstrip("\n\r")
+        if line.strip().startswith("```"):
+            if not in_code:
+                flush()
+                in_code = True
+                buf.append(line)
+                continue
+            buf.append(line)
+            in_code = False
+            flush()
+            continue
+
+        if in_code:
+            buf.append(line)
+            continue
+
+        if line.startswith(("#", "##", "###")):
+            flush()
+            buf.append(line)
+            continue
+
+        if line.strip() in {"---", "***"}:
+            flush()
+            continue
+
+        if not line.strip():
+            if len(buf) > min_chunk_lines:
+                flush()
+            continue
+
+        buf.append(line)
+
+    if buf:
+        blocks.append("\n".join(buf).strip())
+
+    # 为每个 block 计算起始位置（按顺序查找，避免重复块错配）。
+    blocks_with_pos: List[Tuple[str, int]] = []
+    cursor = 0
+    for block in blocks:
+        pos = norm_text.find(block, cursor)
+        if pos < 0:
+            pos = norm_text.find(block)
+        blocks_with_pos.append((block, pos))
+        if pos >= 0:
+            cursor = pos + len(block)
+
+    chunks_with_offsets: List[Tuple[str, int]] = []
+    for block, block_pos in blocks_with_pos:
+        if len(block) <= chunk_size:
+            if block.strip():
+                chunks_with_offsets.append((block, block_pos))
+            continue
+
+        start = 0
+        while start < len(block):
+            end = min(start + chunk_size, len(block))
+            piece = block[start:end]
+            if piece.strip():
+                piece_pos = (block_pos + start) if block_pos >= 0 else -1
+                chunks_with_offsets.append((piece, piece_pos))
+            if end >= len(block):
+                break
+            start = max(0, end - chunk_overlap)
+
+    return chunks_with_offsets
+
+
 def build_index(docs: List[Dict[str, Any]], settings: Settings, index_dir: str) -> None:
     # 仍保留本地 meta.jsonl 以便调试与溯源；优先写 Milvus，失败则写 FAISS 本地索引
     ensure_dirs(index_dir)
@@ -189,15 +276,14 @@ def build_index(docs: List[Dict[str, Any]], settings: Settings, index_dir: str) 
 
     for doc in docs:
         path = doc["path"]
-        text = doc["text"]
+        text = str(doc.get("text") or "").replace("\r\n", "\n")
         page_info = doc.get("page_info", [])
-        chunks = split_text(text)
+        chunks_with_offsets = split_text_with_offsets(text)
         
-        for idx, chunk in enumerate(chunks):
+        for idx, (chunk, chunk_start) in enumerate(chunks_with_offsets):
             all_chunks.append(chunk)
             
             # 查找该分块对应的页码信息
-            chunk_start = text.find(chunk)
             page_num = None
             if page_info and chunk_start >= 0:
                 for page in page_info:
@@ -302,5 +388,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
 

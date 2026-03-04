@@ -1,6 +1,6 @@
 """文档摄取模块测试"""
 import pytest
-from backend.ingest import split_text, read_text_file
+from backend.ingest import split_text, split_text_with_offsets, read_text_file
 
 
 def test_split_text_basic():
@@ -46,6 +46,19 @@ def test_split_text_small():
     chunks = split_text(text, chunk_size=100)
     assert len(chunks) == 1
     assert chunks[0] == text
+
+
+def test_split_text_with_offsets_overlap() -> None:
+    text = "abcdefghij"
+    chunks = split_text_with_offsets(text, chunk_size=5, chunk_overlap=2)
+    assert chunks == [("abcde", 0), ("defgh", 3), ("ghij", 6)]
+
+
+def test_split_text_with_offsets_duplicate_blocks() -> None:
+    text = "X\nY\nZ\n\nX\nY\nZ"
+    chunks = split_text_with_offsets(text, chunk_size=100, chunk_overlap=0)
+    assert [c for c, _ in chunks] == ["X\nY\nZ", "X\nY\nZ"]
+    assert [o for _, o in chunks] == [0, 7]
 
 
 def test_read_text_file(tmp_path):
