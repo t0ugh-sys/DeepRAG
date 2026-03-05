@@ -565,7 +565,7 @@ def explain_retrieval(req: ExplainRetrievalRequest, x_api_key: str | None = None
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -668,7 +668,7 @@ def advanced_search(req: AdvancedSearchRequest, x_api_key: str | None = None, na
         return success_response(data=response_data)
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -727,7 +727,7 @@ def optimize_weights(req: OptimizeWeightsRequest, x_api_key: str | None = None, 
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -787,7 +787,7 @@ def visualize_chunks(req: VisualizeChunksRequest, x_api_key: str | None = None, 
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -823,7 +823,7 @@ def preview_document_chunks(path: str, x_api_key: str | None = None, namespace: 
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -864,7 +864,7 @@ async def upsert_doc(
                 if not final_path:
                     return JSONResponse({"ok": False, "error": "Invalid request / 请求无效"}, status_code=400)
             except Exception as e:
-                logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+                logger.exception("RAG pipeline error")
                 return JSONResponse({"ok": False, "error": "Invalid request / 请求无效"}, status_code=400)
         
         elif "multipart/form-data" in content_type:
@@ -965,7 +965,7 @@ def export_by_path(path: str, namespace: str | None = None, x_api_key: str | Non
         
         return JSONResponse({"ok": True, "path": scoped_path, "chunks": chunks})
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 
@@ -1127,7 +1127,7 @@ def export_metrics(filepath: str = "data/metrics/export.json", x_api_key: str | 
         monitor.export_metrics(safe_path)
         return success_response(data={"filepath": safe_path, "message": "Success / 成功"})
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1173,7 +1173,7 @@ def update_document_metadata(req: UpdateDocumentRequest, x_api_key: str | None =
             "metadata": doc_manager.get_document(scoped_path)
         })
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1276,7 +1276,7 @@ def add_document_tags(path: str, tags: List[str], x_api_key: str | None = None, 
             "tags": (doc_manager.get_document(scoped_path) or {}).get("tags", [])
         })
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1293,7 +1293,7 @@ def remove_document_tags(path: str, tags: List[str], x_api_key: str | None = Non
             "tags": (doc_manager.get_document(scoped_path) or {}).get("tags", [])
         })
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1327,7 +1327,7 @@ def analyze_retrieval_quality(
         return success_response(data=analysis)
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1356,7 +1356,7 @@ def suggest_optimal_weights(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1406,7 +1406,7 @@ def grid_search_weights(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1473,7 +1473,7 @@ def compare_retrieval_strategies(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1495,7 +1495,7 @@ def analyze_query_intent(
         return success_response(data=analysis)
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1549,7 +1549,7 @@ def smart_search_with_intent(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1585,7 +1585,7 @@ def batch_analyze_queries(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1604,7 +1604,7 @@ def analyze_cache(x_api_key: str | None = None) -> Dict[str, Any]:
         return success_response(data=analysis)
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1644,7 +1644,7 @@ def prewarm_cache(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1672,7 +1672,7 @@ def get_smart_cache_stats(x_api_key: str | None = None) -> Dict[str, Any]:
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1722,7 +1722,7 @@ def optimize_cache_config(x_api_key: str | None = None) -> Dict[str, Any]:
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1768,7 +1768,7 @@ def run_benchmark_test(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1794,7 +1794,7 @@ def test_retrieval_quality(
         return success_response(data=results)
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1819,7 +1819,7 @@ def test_answer_quality(
         return success_response(data=results)
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1852,7 +1852,7 @@ def save_test_cases_to_file(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1883,7 +1883,7 @@ def load_test_cases_from_file(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1914,7 +1914,7 @@ def build_knowledge_graph(
                         })
         else:
             documents = []
-            logger.info("RAG pipeline info / RAG 流水线信息")
+            logger.info("Knowledge graph build starting")
         
         builder = KnowledgeGraphBuilder()
         kg = builder.build_from_documents(documents)
@@ -1929,7 +1929,7 @@ def build_knowledge_graph(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1944,7 +1944,7 @@ def get_kg_statistics(x_api_key: str | None = None) -> Dict[str, Any]:
         return success_response(data=stats)
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1972,7 +1972,7 @@ def get_entity_info(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -1991,7 +1991,7 @@ def get_entity_subgraph(
         return success_response(data=subgraph)
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -2025,7 +2025,7 @@ def search_entities(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -2050,7 +2050,7 @@ def find_entity_path(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -2101,7 +2101,7 @@ def graph_enhanced_search(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -2122,7 +2122,7 @@ def export_knowledge_graph(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
@@ -2146,5 +2146,5 @@ def import_knowledge_graph(
         })
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
