@@ -166,6 +166,20 @@ cd frontend
 npm run dev  # 访问 http://localhost:5173
 ```
 
+### 5. 最小 Smoke Test（推荐）
+
+服务启动后，用 curl 快速验证基础链路是否正常：
+
+```bash
+curl -sS http://localhost:8000/healthz
+curl -sS http://localhost:8000/models
+curl -sS http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -d "{\"question\":\"用一句话说明这个系统做什么？\"}"
+```
+
+如开启了鉴权（`RAG_API_KEY_REQUIRED=true`），需要加请求头 `X-API-Key: <your_key>`。
+
 ## API 文档
 
 启动后访问 `http://localhost:8000/docs` 查看 Swagger 交互式文档。
