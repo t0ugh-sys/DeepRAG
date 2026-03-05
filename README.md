@@ -66,6 +66,7 @@
 排障建议：
 - 先看响应头 `X-Request-Id`，再查后端日志同 request_id 的检索/重排过程。
 - 如果效果波动：先固定模型与检索参数（`RAG_*`）再逐项开关（BM25/MMR/Rerank/改写）。
+- 如需更细的排查信息：设置 `RAG_TRACE=true`，将输出每次请求的检索/重排/提示词构建/LLM 耗时与候选数量（不记录原始问题，仅记录 hash）。
 
 ## 快速开始
 
@@ -126,6 +127,7 @@ RAG_BM25_WEIGHT=0.4
 RAG_VEC_WEIGHT=0.6
 RAG_MMR_LAMBDA=0.7
 RAG_RERANKER_ENABLED=false
+RAG_TRACE=false  # 可观测性：输出检索链路 trace 日志（建议排障时开启）
 
 # 联网搜索（可选）
 RAG_WEB_SEARCH_ENABLED=false
@@ -173,6 +175,7 @@ npm run dev  # 访问 http://localhost:5173
 **问答相关**
 - `POST /ask` - 基础问答
 - `POST /ask_stream` - 流式问答（SSE）
+- 说明：sources 中的 `score_fused` 为融合分，`score_rerank` 为重排分（启用 reranker 时才有）。
 - `POST /ask_with_rewriting` - 使用查询改写增强检索
 - `POST /analyze_query` - 分析查询并推荐策略
 - `POST /explain_retrieval` - 解释检索结果（评分+高亮）

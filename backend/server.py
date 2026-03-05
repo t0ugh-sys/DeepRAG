@@ -490,7 +490,7 @@ def ask_with_query_rewriting(req: QueryRewriteRequest, x_api_key: str | None = N
         return QueryRewriteResponse(answer=answer, sources=sources, metadata=metadata)
     
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -508,7 +508,7 @@ def analyze_query(req: QueryAnalysisRequest, x_api_key: str | None = None) -> Di
         analysis = pipeline.analyze_query(req.question)
         return success_response(data=analysis)
     except Exception as e:
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {e}")
+        logger.exception("RAG pipeline error")
         return error_response(message=str(e))
 
 
