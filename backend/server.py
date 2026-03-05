@@ -1633,13 +1633,18 @@ def prewarm_cache(
     use_hot_queries: bool = True,
     top_n: int = 20,
     custom_queries: Optional[List[str]] = None,
-    x_api_key: str | None = None
+    x_api_key: str | None = None,
+    namespace: str | None = None,
 ) -> Dict[str, Any]:
     _require_api_key(x_api_key)
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Service unavailable / 服务不可用")
+    ns = _resolve_namespace(namespace)
+    local = _get_pipeline(ns)
     
     try:
         def retrieval_func(query: str):
-            return pipeline.vector_store.search(query, top_k=10)
+            return local.vector_store.search(query, top_k=10)
         
         prewarmer = CachePrewarmer(retrieval_func)
         results = {"prewarmed_queries": []}
@@ -1917,21 +1922,23 @@ from backend.knowledge_graph import (
 @app.post("/kg/build")
 def build_knowledge_graph(
     doc_paths: Optional[List[str]] = None,
-    x_api_key: str | None = None
+    x_api_key: str | None = None,
+    namespace: str | None = None,
 ) -> Dict[str, Any]:
     _require_api_key(x_api_key)
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Service unavailable / 服务不可用")
+    ns = _resolve_namespace(namespace)
+    local = _get_pipeline(ns)
     
     try:
         if doc_paths:
             documents = []
-            for path in doc_paths:
-                results = pipeline.vector_store.search(path, top_k=100)
-                for r in results:
-                    if r.meta.get("path") == path:
-                        documents.append({
-                            "text": r.text,
-                            "path": r.meta.get("path", "")
-                        })
+            for raw_path in doc_paths:
+                scoped_path = _normalize_and_scope_path(str(raw_path), ns)
+                chunks = local.vector_store.get_chunks_by_path(scoped_path, limit=5000)
+                for c in chunks:
+                    documents.append({"text": c.text, "path": str(c.meta.get("path") or scoped_path)})
         else:
             documents = []
             logger.info("Knowledge graph build starting")
@@ -2079,9 +2086,14 @@ def graph_enhanced_search(
     question: str,
     top_k: int = 10,
     use_graph_expansion: bool = True,
-    x_api_key: str | None = None
+    x_api_key: str | None = None,
+    namespace: str | None = None,
 ) -> Dict[str, Any]:
     _require_api_key(x_api_key)
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Service unavailable / 服务不可用")
+    ns = _resolve_namespace(namespace)
+    local = _get_pipeline(ns)
     
     try:
         kg = get_knowledge_graph()
@@ -2094,8 +2106,8 @@ def graph_enhanced_search(
         related_entities = retriever.get_related_entities(question)
         
         all_results = []
-        for query in expanded_queries[:3]:  #       ?3        ?
-            results = pipeline.vector_store.search(query, top_k=top_k)
+        for query in expanded_queries[:3]:
+            results = local.vector_store.search(query, top_k=top_k)
             all_results.extend(results)
         
         seen = set()

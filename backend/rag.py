@@ -646,6 +646,53 @@ class VectorStore:
             })
         return result
 
+    def get_chunks_by_path(self, path: str, limit: int = 2000) -> List[RetrievedChunk]:
+        """
+        Fetch chunks by exact path match.
+
+        This is used by non-RAG features (e.g. knowledge graph build) that need
+        document text without relying on semantic search.
+        """
+        if not path:
+            return []
+
+        if self.backend == "milvus" and self.collection is not None:
+            try:
+                escaped = str(path).replace("\\", "\\\\").replace('"', '\\"')
+                recs = self.collection.query(
+                    expr=f'path == "{escaped}"',
+                    output_fields=["path", "chunk_id", "text"],
+                    limit=limit,
+                )
+                out: List[RetrievedChunk] = []
+                for r in recs:
+                    out.append(
+                        RetrievedChunk(
+                            text=str(r.get("text") or ""),
+                            score=0.0,
+                            meta={
+                                "path": r.get("path"),
+                                "chunk_id": r.get("chunk_id"),
+                            },
+                        )
+                    )
+                out.sort(key=lambda x: int(x.meta.get("chunk_id") or 0))
+                return out
+            except Exception:
+                return []
+
+        out = []
+        for t, m in zip(self.texts, self.metas):
+            if str(m.get("path")) != str(path):
+                continue
+            if not self._is_in_namespace(m.get("path")):
+                continue
+            out.append(RetrievedChunk(text=t, score=0.0, meta=dict(m)))
+            if len(out) >= limit:
+                break
+        out.sort(key=lambda x: int(x.meta.get("chunk_id") or 0))
+        return out
+
 
 def build_prompt(
     question: str,
