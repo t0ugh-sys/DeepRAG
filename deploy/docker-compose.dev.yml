@@ -58,7 +58,7 @@ services:
     networks:
       - deeprag-network
 
-  # RAG 后端（生产：不挂载源码）
+  # RAG 后端（开发：挂载源码）
   backend:
     build:
       context: ..
@@ -74,6 +74,7 @@ services:
       - VECTOR_BACKEND=milvus
     volumes:
       - ../data:/app/data
+      - ../backend:/app/backend
     depends_on:
       milvus:
         condition: service_healthy

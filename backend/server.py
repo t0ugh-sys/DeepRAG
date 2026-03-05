@@ -4,7 +4,7 @@ import time
 from contextlib import asynccontextmanager
 from threading import Lock
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -39,6 +39,9 @@ def _ensure_index_ready() -> None:
 
     meta_path = os.path.join(settings.index_dir, "meta.jsonl")
     if os.path.exists(meta_path) and os.path.getsize(meta_path) > 0:
+        return
+    if not bool(getattr(settings, "auto_ingest_on_startup", False)):
+        logger.warning("Index missing but auto-ingest disabled (set RAG_AUTO_INGEST_ON_STARTUP=true to enable)")
         return
 
     logger.info("Index missing; starting auto-ingest")
@@ -302,12 +305,16 @@ def ns_delete(namespace: str | None = None, x_api_key: str | None = None) -> JSO
 
 
 @app.post("/ask", response_model=AskResponse)
-def ask(req: AskRequest, x_api_key: str | None = None, namespace: str | None = None) -> AskResponse:  # type: ignore[override]
+def ask(
+    req: AskRequest, response: Response, x_api_key: str | None = None, namespace: str | None = None
+) -> AskResponse:  # type: ignore[override]
     _require_api_key(x_api_key)
     if pipeline is None:
         raise HTTPException(status_code=503, detail="Service unavailable / 服务不可用")
     ns = _resolve_namespace(namespace)
     local = _get_pipeline(ns)
+    response.headers["X-RAG-Namespace"] = ns
+    response.headers["X-RAG-Vector-Backend"] = str(getattr(local.store, "backend", "unknown"))
     answer, recs = local.ask(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n, req.model)
     sources: List[SourceItem] = []
     for r in recs:
@@ -436,7 +443,10 @@ def ask_stream(req: AskRequest, x_api_key: str | None = None, namespace: str | N
             yield f"data: {token}\n\n"
         yield "event: done\ndata: end\n\n"
 
-    return StreamingResponse(sse(), media_type="text/event-stream")
+    resp = StreamingResponse(sse(), media_type="text/event-stream")
+    resp.headers["X-RAG-Namespace"] = ns
+    resp.headers["X-RAG-Vector-Backend"] = str(getattr(local.store, "backend", "unknown"))
+    return resp
 
 
 

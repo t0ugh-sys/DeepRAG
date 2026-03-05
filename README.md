@@ -128,6 +128,7 @@ RAG_VEC_WEIGHT=0.6
 RAG_MMR_LAMBDA=0.7
 RAG_RERANKER_ENABLED=false
 RAG_TRACE=false  # 可观测性：输出检索链路 trace 日志（建议排障时开启）
+RAG_AUTO_INGEST_ON_STARTUP=false  # 默认关闭：避免冷启动阻塞与误入库（需要时手动执行入库/建索引）
 
 # 联网搜索（可选）
 RAG_WEB_SEARCH_ENABLED=false
@@ -164,6 +165,20 @@ python -m uvicorn backend.server:app --host 0.0.0.0 --port 8000 --reload
 # 前端（终端 2）
 cd frontend
 npm run dev  # 访问 http://localhost:5173
+```
+
+### Docker 部署（Milvus）
+
+生产（不挂载源码）：
+
+```bash
+docker compose -f deploy/docker-compose.yml up --build
+```
+
+开发（挂载源码，方便调试）：
+
+```bash
+docker compose -f deploy/docker-compose.dev.yml up --build
 ```
 
 ### 5. 最小 Smoke Test（推荐）
