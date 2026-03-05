@@ -12,7 +12,7 @@ from fastapi import UploadFile, File, Form
 from pydantic import BaseModel
 
 from backend.config import Settings
-from backend.types import RetrievedChunk
+from backend.rag_types import RetrievedChunk
 from backend.utils.logger import logger
 from backend.utils.middleware import RequestLoggingMiddleware, get_current_request, get_current_request_id
 from backend.utils.responses import success_response, error_response

@@ -72,7 +72,7 @@
 
 ### 环境要求
 
-- Python 3.10+
+- Python 3.10–3.11（CI 覆盖；推荐）
 - Node.js 20+ (前端)
 - Conda (推荐，用于 FAISS)
 - Tesseract OCR (可选，用于图片文字识别)

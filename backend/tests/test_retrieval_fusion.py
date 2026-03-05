@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from backend.rag import VectorStore
-from backend.types import RetrievedChunk
+from backend.rag_types import RetrievedChunk
 
 
 class DummyBM25:
@@ -72,4 +72,3 @@ def test_fuse_with_bm25_includes_bm25_only_candidates():
 
     assert fused
     assert fused[0].meta["path"] == "p1"
-

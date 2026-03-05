@@ -16,7 +16,7 @@ from sentence_transformers import SentenceTransformer
 
 from backend.config import Settings
 from backend.ingest import split_text
-from backend.types import RetrievedChunk
+from backend.rag_types import RetrievedChunk
 from backend.utils.cache import query_cache
 from backend.utils.middleware import get_current_request_id
 

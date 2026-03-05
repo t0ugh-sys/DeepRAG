@@ -9,4 +9,3 @@ class RetrievedChunk:
     text: str
     score: float
     meta: Dict[str, Any]
-

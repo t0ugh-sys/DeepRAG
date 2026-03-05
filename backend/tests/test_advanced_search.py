@@ -1,7 +1,7 @@
 import json
 
 import backend.server as server
-from backend.types import RetrievedChunk
+from backend.rag_types import RetrievedChunk
 
 
 class DummyStore:

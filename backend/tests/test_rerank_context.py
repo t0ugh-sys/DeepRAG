@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 from backend.rag import RAGPipeline
-from backend.types import RetrievedChunk
+from backend.rag_types import RetrievedChunk
 
 
 class DummyStore:
@@ -107,4 +107,3 @@ def test_ask_without_rerank_uses_top_k():
     _, recs = pipeline.ask("q", top_k=5, rerank_enabled=False, rerank_top_n=4, model="dummy")
     assert pipeline.store.last_top_k == 5
     assert len(recs) == 5
-
