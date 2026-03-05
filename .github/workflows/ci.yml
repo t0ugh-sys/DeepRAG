@@ -28,20 +28,20 @@ jobs:
     
     - name: Install dependencies
       run: |
-        pip install -r backend/requirements.txt || echo "Some packages failed, continuing..."
+        pip install -r backend/requirements.txt
         pip install pytest pytest-cov ruff mypy
     
     - name: Lint with ruff
       run: |
-        ruff check backend/ --select E,F,W --ignore E501 || true
+        ruff check backend/ --select E,F,W --ignore E501
     
     - name: Type check with mypy
       run: |
-        mypy backend/ --ignore-missing-imports --no-strict-optional || true
+        mypy backend/ --ignore-missing-imports --no-strict-optional
     
     - name: Run tests
       run: |
-        pytest backend/tests/ -v --cov=backend --cov-report=term-missing || true
+        pytest backend/tests/ -v --cov=backend --cov-report=term-missing
 
   test-frontend:
     runs-on: ubuntu-latest
@@ -84,4 +84,3 @@ jobs:
     - name: Build frontend image
       run: |
         docker build -t rag-frontend:latest -f deploy/Dockerfile.frontend .
-
