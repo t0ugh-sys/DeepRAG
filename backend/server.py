@@ -1305,12 +1305,17 @@ from backend.retrieval_optimizer import get_optimizer
 def analyze_retrieval_quality(
     question: str,
     top_k: int = 10,
-    x_api_key: str | None = None
+    x_api_key: str | None = None,
+    namespace: str | None = None,
 ) -> Dict[str, Any]:
     _require_api_key(x_api_key)
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Service unavailable / 服务不可用")
+    ns = _resolve_namespace(namespace)
+    local = _get_pipeline(ns)
     
     try:
-        results = pipeline.vector_store.search(question, top_k=top_k)
+        results = local.vector_store.search(question, top_k=top_k)
         
         results_dict = [
             {
@@ -1373,9 +1378,14 @@ def _get_weight_explanation(vec_weight: float, bm25_weight: float) -> str:
 def grid_search_weights(
     question: str,
     top_k: int = 10,
-    x_api_key: str | None = None
+    x_api_key: str | None = None,
+    namespace: str | None = None,
 ) -> Dict[str, Any]:
     _require_api_key(x_api_key)
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Service unavailable / 服务不可用")
+    ns = _resolve_namespace(namespace)
+    local = _get_pipeline(ns)
     
     try:
         optimizer = get_optimizer()
@@ -1384,15 +1394,15 @@ def grid_search_weights(
             old_vec = settings.rag_vec_weight
             old_bm25 = settings.rag_bm25_weight
             
-            settings.rag_vec_weight = vector_weight
-            settings.rag_bm25_weight = bm25_weight
+            try:
+                settings.rag_vec_weight = vector_weight
+                settings.rag_bm25_weight = bm25_weight
+                results = local.vector_store.search(query, top_k=top_k)
+                return [{"score": r.score} for r in results]
+            finally:
+                settings.rag_vec_weight = old_vec
+                settings.rag_bm25_weight = old_bm25
             
-            results = pipeline.vector_store.search(query, top_k=top_k)
-            
-            settings.rag_vec_weight = old_vec
-            settings.rag_bm25_weight = old_bm25
-            
-            return [{"score": r.score} for r in results]
         
         optimization = optimizer.weight_optimizer.grid_search(
             retrieval_func,
@@ -1414,16 +1424,21 @@ def grid_search_weights(
 def compare_retrieval_strategies(
     question: str,
     top_k: int = 10,
-    x_api_key: str | None = None
+    x_api_key: str | None = None,
+    namespace: str | None = None,
 ) -> Dict[str, Any]:
     _require_api_key(x_api_key)
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Service unavailable / 服务不可用")
+    ns = _resolve_namespace(namespace)
+    local = _get_pipeline(ns)
     
     try:
         strategies = []
         
         old_bm25 = settings.rag_bm25_enabled
         settings.rag_bm25_enabled = False
-        results_vec = pipeline.vector_store.search(question, top_k=top_k)
+        results_vec = local.vector_store.search(question, top_k=top_k)
         settings.rag_bm25_enabled = old_bm25
         
         strategies.append({
@@ -1433,7 +1448,7 @@ def compare_retrieval_strategies(
             "result_count": len(results_vec)
         })
         
-        results_hybrid = pipeline.vector_store.search(question, top_k=top_k)
+        results_hybrid = local.vector_store.search(question, top_k=top_k)
         strategies.append({
             "name": "Hybrid / 混合检索",
             "config": {
@@ -1452,13 +1467,13 @@ def compare_retrieval_strategies(
         settings.rag_vec_weight = vec_w
         settings.rag_bm25_weight = bm25_w
         
-        results_adaptive = pipeline.vector_store.search(question, top_k=top_k)
+        results_adaptive = local.vector_store.search(question, top_k=top_k)
         
         settings.rag_vec_weight = old_vec
         settings.rag_bm25_weight = old_bm25
         
         strategies.append({
-            "name": "        ",
+            "name": "Adaptive / 自适应",
             "config": {"vector_weight": vec_w, "bm25_weight": bm25_w},
             "avg_score": round(sum(r.score for r in results_adaptive) / len(results_adaptive), 4) if results_adaptive else 0,
             "result_count": len(results_adaptive)
@@ -1504,9 +1519,14 @@ def smart_search_with_intent(
     question: str,
     top_k: Optional[int] = None,
     use_recommended_config: bool = True,
-    x_api_key: str | None = None
+    x_api_key: str | None = None,
+    namespace: str | None = None,
 ) -> Dict[str, Any]:
     _require_api_key(x_api_key)
+    if pipeline is None:
+        raise HTTPException(status_code=503, detail="Service unavailable / 服务不可用")
+    ns = _resolve_namespace(namespace)
+    local = _get_pipeline(ns)
     
     try:
         analyzer = get_query_analyzer()
@@ -1523,13 +1543,13 @@ def smart_search_with_intent(
             settings.rag_vec_weight = config["vector_weight"]
             settings.rag_bm25_weight = config["bm25_weight"]
             
-            results = pipeline.vector_store.search(question, top_k=actual_top_k)
+            results = local.vector_store.search(question, top_k=actual_top_k)
             
             settings.rag_vec_weight = old_vec
             settings.rag_bm25_weight = old_bm25
         else:
             actual_top_k = top_k or 10
-            results = pipeline.vector_store.search(question, top_k=actual_top_k)
+            results = local.vector_store.search(question, top_k=actual_top_k)
         
         results_dict = [
             {
