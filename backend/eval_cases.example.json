@@ -1,0 +1,14 @@
+[
+  {
+    "question": "什么是 RAG？",
+    "expected_keywords": ["检索", "增强", "生成"],
+    "expected_doc_paths": ["default/README.md"],
+    "category": "definition"
+  },
+  {
+    "question": "如何启动后端服务？",
+    "expected_keywords": ["uvicorn", "8000"],
+    "expected_doc_paths": ["default/README.md"],
+    "category": "how_to"
+  }
+]

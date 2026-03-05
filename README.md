@@ -199,6 +199,18 @@ curl -sS http://localhost:8000/ask \
 
 启动后访问 `http://localhost:8000/docs` 查看 Swagger 交互式文档。
 
+## 评测（可复现）
+
+项目内置评测接口与离线 CLI。推荐先准备测试用例 JSON（示例：`backend/eval_cases.example.json`），然后运行：
+
+```bash
+# 检索评测（不依赖大模型）
+python -m backend.eval_cli --cases backend/eval_cases.example.json --mode retrieval --top_k 10 --out data/evaluation/retrieval.txt
+
+# 完整评测（包含答案质量；需要配置 OPENAI_API_KEY 等）
+python -m backend.eval_cli --cases backend/eval_cases.example.json --mode benchmark --top_k 10 --out data/evaluation/benchmark.txt
+```
+
 ### 主要端点
 
 **问答相关**
