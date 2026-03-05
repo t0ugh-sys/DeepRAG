@@ -3,16 +3,7 @@ import json
 import os
 from typing import List, Dict, Any, Tuple
 
-import numpy as np
-
-from sentence_transformers import SentenceTransformer
-
-import faiss
-
 from backend.config import Settings, ensure_dirs
-
-# Milvus
-from pymilvus import connections, FieldSchema, CollectionSchema, DataType, Collection, utility
 
 
 def read_text_file(path: str) -> str:
@@ -269,6 +260,9 @@ def split_text_with_offsets(text: str, chunk_size: int = 400, chunk_overlap: int
 def build_index(docs: List[Dict[str, Any]], settings: Settings, index_dir: str) -> None:
     # 仍保留本地 meta.jsonl 以便调试与溯源；优先写 Milvus，失败则写 FAISS 本地索引
     ensure_dirs(index_dir)
+    import numpy as np
+    from sentence_transformers import SentenceTransformer
+
     model = SentenceTransformer(settings.embedding_model_name)
 
     all_chunks: List[str] = []
@@ -309,6 +303,14 @@ def build_index(docs: List[Dict[str, Any]], settings: Settings, index_dir: str) 
     wrote_milvus = False
     if settings.vector_backend in ("auto", "milvus"):
         try:
+            from pymilvus import (
+                connections,
+                FieldSchema,
+                CollectionSchema,
+                DataType,
+                Collection,
+                utility,
+            )
             connections.connect(
                 alias="default",
                 host=settings.milvus_host,
@@ -388,4 +390,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
