@@ -218,6 +218,31 @@ class Settings:
         if os.getenv('RAG_DEBUG_CONFIG', '').lower() in {'1', 'true', 'yes'}:
             logger.info('OPENAI_API_KEY present: %s', bool(self.openai_api_key))
 
+    # Backward-compatibility aliases used by older server routes.
+    @property
+    def rag_vec_weight(self) -> float:
+        return float(self.vec_weight or 0.0)
+
+    @rag_vec_weight.setter
+    def rag_vec_weight(self, v: float) -> None:
+        self.vec_weight = float(v)
+
+    @property
+    def rag_bm25_weight(self) -> float:
+        return float(self.bm25_weight or 0.0)
+
+    @rag_bm25_weight.setter
+    def rag_bm25_weight(self, v: float) -> None:
+        self.bm25_weight = float(v)
+
+    @property
+    def rag_bm25_enabled(self) -> bool:
+        return bool(self.bm25_enabled)
+
+    @rag_bm25_enabled.setter
+    def rag_bm25_enabled(self, v: bool) -> None:
+        self.bm25_enabled = bool(v)
+
 
 def ensure_dirs(path: str) -> None:
     os.makedirs(path, exist_ok=True)

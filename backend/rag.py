@@ -715,6 +715,8 @@ class RAGPipeline:
         self.settings = settings
         meta_path = os.path.join(settings.index_dir, "meta.jsonl")
         self.store = VectorStore(meta_path, settings.embedding_model_name, settings, namespace)
+        # Backward-compatibility: older server routes still reference `pipeline.vector_store`.
+        self.vector_store = self.store
 
         self.client = None
         if settings.openai_api_key:
