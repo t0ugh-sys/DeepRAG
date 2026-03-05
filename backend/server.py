@@ -142,6 +142,8 @@ class SourceItem(BaseModel):
     path: str
     chunk_id: int | None = None
     score: float
+    score_fused: float | None = None
+    score_rerank: float | None = None
     snippet: str
 
 
@@ -309,10 +311,14 @@ def ask(req: AskRequest, x_api_key: str | None = None, namespace: str | None = N
     answer, recs = local.ask(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n, req.model)
     sources: List[SourceItem] = []
     for r in recs:
+        score_fused = float(r.meta.get("score_fused")) if r.meta.get("score_fused") is not None else float(r.score)
+        score_rerank = float(r.meta.get("score_rerank")) if r.meta.get("score_rerank") is not None else None
         sources.append(SourceItem(
             path=str(r.meta.get("path")),
             chunk_id=int(r.meta.get("chunk_id")) if r.meta.get("chunk_id") is not None else None,
             score=float(r.score),
+            score_fused=score_fused,
+            score_rerank=score_rerank,
             snippet=r.text[:400]
         ))
     return AskResponse(answer=answer, sources=sources)
@@ -338,7 +344,7 @@ def healthz() -> JSONResponse:  # type: ignore[override]
     
     try:
         if pipeline is None:
-            raise Exception("RAG Pipeline       ")
+            raise RuntimeError("Pipeline not initialized")
         store = pipeline.store  # type: ignore[attr-defined]
         coll = getattr(store, "collection", None)
         active_backend = getattr(store, "backend", None)
@@ -359,7 +365,7 @@ def healthz() -> JSONResponse:  # type: ignore[override]
                     details["document_count"] = 0
                     
             except Exception as e:
-                logger.warning(f"RAG pipeline warning / RAG 流水线警告: {e}")
+                logger.warning("Health check: milvus unavailable: %s", e)
                 details["milvus_warning"] = str(e)
                 details["document_count"] = 0
         else:
@@ -383,12 +389,12 @@ def healthz() -> JSONResponse:  # type: ignore[override]
             "reranker_enabled": pipeline.settings.reranker_enabled,
         })
         
-        logger.debug("RAG pipeline debug / RAG 调试信息")
+        logger.debug("Health check OK")
         
     except Exception as exc:
         ok = False
         details["error"] = str(exc)
-        logger.error(f"RAG pipeline error / RAG 流水线错误: {exc}")
+        logger.exception("Health check failed")
     
     return JSONResponse({"ok": ok, "details": details})
 
@@ -414,10 +420,14 @@ def ask_stream(req: AskRequest, x_api_key: str | None = None, namespace: str | N
     def sse():  # noqa: ANN202
         yield f"event: meta\ndata: {len(recs)}\n\n"
         for r in recs:
+            score_fused = float(r.meta.get("score_fused")) if r.meta.get("score_fused") is not None else float(r.score)
+            score_rerank = float(r.meta.get("score_rerank")) if r.meta.get("score_rerank") is not None else None
             payload = {
                 "path": str(r.meta.get("path")),
                 "chunk_id": int(r.meta.get("chunk_id")) if r.meta.get("chunk_id") is not None else None,
                 "score": float(r.score),
+                "score_fused": score_fused,
+                "score_rerank": score_rerank,
                 "snippet": r.text[:200],
             }
             from json import dumps
@@ -893,8 +903,7 @@ async def upsert_doc(
         return JSONResponse({"ok": True, "added_chunks": added})
     except Exception as e:
         logger.error("RAG pipeline error: upsert failed path=%s error=%s", final_path, str(e))
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.exception("Upsert failed with exception")
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
 
