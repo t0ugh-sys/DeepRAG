@@ -1,8 +1,10 @@
 ﻿from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import os
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -16,11 +18,27 @@ from backend.config import Settings
 from backend.ingest import split_text
 from backend.types import RetrievedChunk
 from backend.utils.cache import query_cache
+from backend.utils.middleware import get_current_request_id
 
 try:
     from FlagEmbedding import FlagReranker  # type: ignore
 except Exception:  # pragma: no cover
     FlagReranker = None  # type: ignore
+
+
+def _trace_enabled(settings: Settings) -> bool:
+    return bool(getattr(settings, "trace_enabled", False))
+
+
+def _trace_event(settings: Settings, event: str, fields: Dict[str, Any]) -> None:
+    if not _trace_enabled(settings):
+        return
+    req_id = get_current_request_id() or "-"
+    try:
+        payload = json.dumps(fields, ensure_ascii=True, separators=(",", ":"), default=str)
+    except Exception:
+        payload = "{}"
+    logging.getLogger("rag").info("trace event=%s request_id=%s %s", event, req_id, payload)
 
 
 class VectorStore:
@@ -752,6 +770,7 @@ class RAGPipeline:
         rerank_top_n: int | None = None,
         model: str | None = None,
     ) -> Tuple[str, List[RetrievedChunk]]:
+        t0 = time.perf_counter()
         k = top_k or self.settings.top_k
 
         use_rr = (self.reranker is not None) and (
@@ -766,6 +785,24 @@ class RAGPipeline:
             candidate_k = min(candidate_k, 200)
 
         namespace = getattr(self.store, "namespace", "default")
+        q_hash = hashlib.sha1(question.encode("utf-8", errors="ignore")).hexdigest()[:10]
+        _trace_event(
+            self.settings,
+            "ask_start",
+            {
+                "ns": namespace,
+                "backend": str(getattr(self.store, "backend", "unknown")),
+                "q_hash": q_hash,
+                "q_len": len(question),
+                "top_k": int(k),
+                "candidate_k": int(candidate_k),
+                "rerank": bool(use_rr),
+                "rerank_top_n": int(top_n),
+                "bm25_enabled": bool(self.settings.bm25_enabled),
+                "bm25_complete_corpus": bool(getattr(self.store, "_bm25_complete_corpus", True)),
+                "query_expand_enabled": bool(self.settings.query_expand_enabled),
+            },
+        )
         retrieval_options = {
             "rev": getattr(self.store, "_corpus_revision", 0),
             "bm25_enabled": bool(self.settings.bm25_enabled),
@@ -786,8 +823,15 @@ class RAGPipeline:
         if cached_result is not None:
             # Clone to avoid mutating cached objects (rerank, score updates).
             recs = [RetrievedChunk(text=r.text, score=r.score, meta=dict(r.meta)) for r in cached_result]
+            _trace_event(self.settings, "retrieve_done", {"q_hash": q_hash, "cache_hit": True, "n": len(recs)})
         else:
+            t_search0 = time.perf_counter()
             recs = self.store.search(question, candidate_k)
+            _trace_event(
+                self.settings,
+                "retrieve_done",
+                {"q_hash": q_hash, "cache_hit": False, "ms": int((time.perf_counter() - t_search0) * 1000), "n": len(recs)},
+            )
             query_cache.set(
                 question,
                 candidate_k,
@@ -797,6 +841,7 @@ class RAGPipeline:
             )
 
         if use_rr:
+            t_rr0 = time.perf_counter()
             pairs = [[question, r.text] for r in recs]
             scores = self.reranker.compute_score(pairs)
             for r, s in zip(recs, scores):
@@ -804,23 +849,38 @@ class RAGPipeline:
             recs = sorted(recs, key=lambda x: float(x.meta.get("score_rerank", 0.0)), reverse=True)
             context_k = max(k, top_n)
             recs = recs[:context_k]
+            _trace_event(self.settings, "rerank_done", {"q_hash": q_hash, "ms": int((time.perf_counter() - t_rr0) * 1000), "n": len(recs)})
         else:
             recs = recs[:k]
 
+        t_prompt0 = time.perf_counter()
         prompt = build_prompt(
             question,
             recs,
             strict_mode=self.settings.strict_mode,
             show_scores=bool(self.settings.prompt_show_scores),
         )
+        _trace_event(self.settings, "prompt_done", {"q_hash": q_hash, "ms": int((time.perf_counter() - t_prompt0) * 1000), "chars": len(prompt)})
         target_model = model or self.settings.llm_model
         client = self._get_client_for_model(target_model)
+        t_llm0 = time.perf_counter()
         resp = client.chat.completions.create(
             model=target_model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
         )
         answer = resp.choices[0].message.content or ""
+        _trace_event(
+            self.settings,
+            "ask_done",
+            {
+                "q_hash": q_hash,
+                "ms_total": int((time.perf_counter() - t0) * 1000),
+                "ms_llm": int((time.perf_counter() - t_llm0) * 1000),
+                "sources": len(recs),
+                "answer_chars": len(answer),
+            },
+        )
         return answer, recs
 
     def ask_stream(
@@ -834,6 +894,7 @@ class RAGPipeline:
         web_enabled: bool | None = None,
         web_top_k: int | None = None,
     ):
+        t0 = time.perf_counter()
         k = top_k or self.settings.top_k
 
         use_rr = (self.reranker is not None) and (
@@ -847,6 +908,25 @@ class RAGPipeline:
             candidate_k = min(candidate_k, 200)
 
         namespace = getattr(self.store, "namespace", "default")
+        q_hash = hashlib.sha1(question.encode("utf-8", errors="ignore")).hexdigest()[:10]
+        _trace_event(
+            self.settings,
+            "ask_stream_start",
+            {
+                "ns": namespace,
+                "backend": str(getattr(self.store, "backend", "unknown")),
+                "q_hash": q_hash,
+                "q_len": len(question),
+                "top_k": int(k),
+                "candidate_k": int(candidate_k),
+                "rerank": bool(use_rr),
+                "rerank_top_n": int(top_n),
+                "bm25_enabled": bool(self.settings.bm25_enabled),
+                "bm25_complete_corpus": bool(getattr(self.store, "_bm25_complete_corpus", True)),
+                "query_expand_enabled": bool(self.settings.query_expand_enabled),
+                "web_enabled": bool(web_enabled),
+            },
+        )
         retrieval_options = {
             "rev": getattr(self.store, "_corpus_revision", 0),
             "bm25_enabled": bool(self.settings.bm25_enabled),
@@ -866,8 +946,15 @@ class RAGPipeline:
         cached_result = query_cache.get(question, candidate_k, namespace, retrieval_options)
         if cached_result is not None:
             recs = [RetrievedChunk(text=r.text, score=r.score, meta=dict(r.meta)) for r in cached_result]
+            _trace_event(self.settings, "retrieve_done", {"q_hash": q_hash, "cache_hit": True, "n": len(recs)})
         else:
+            t_search0 = time.perf_counter()
             recs = self.store.search(question, candidate_k)
+            _trace_event(
+                self.settings,
+                "retrieve_done",
+                {"q_hash": q_hash, "cache_hit": False, "ms": int((time.perf_counter() - t_search0) * 1000), "n": len(recs)},
+            )
             query_cache.set(
                 question,
                 candidate_k,
@@ -898,6 +985,7 @@ class RAGPipeline:
                 pass
 
         if use_rr:
+            t_rr0 = time.perf_counter()
             pairs = [[question, r.text] for r in recs]
             scores = self.reranker.compute_score(pairs)
             for r, s in zip(recs, scores):
@@ -905,9 +993,11 @@ class RAGPipeline:
             recs = sorted(recs, key=lambda x: float(x.meta.get("score_rerank", 0.0)), reverse=True)
             context_k = max(k, top_n)
             recs = recs[:context_k]
+            _trace_event(self.settings, "rerank_done", {"q_hash": q_hash, "ms": int((time.perf_counter() - t_rr0) * 1000), "n": len(recs)})
         else:
             recs = recs[:k]
 
+        t_prompt0 = time.perf_counter()
         prompt = build_prompt(
             question,
             recs,
@@ -915,6 +1005,7 @@ class RAGPipeline:
             custom_system_prompt=system_prompt,
             show_scores=bool(self.settings.prompt_show_scores),
         )
+        _trace_event(self.settings, "prompt_done", {"q_hash": q_hash, "ms": int((time.perf_counter() - t_prompt0) * 1000), "chars": len(prompt)})
         if web_snippets:
             web_block = "\n\n".join(web_snippets)
             prompt = (
@@ -927,6 +1018,8 @@ class RAGPipeline:
         client = self._get_client_for_model(target_model)
 
         def _gen():  # noqa: ANN202
+            t_llm0 = time.perf_counter()
+            first_token_emitted = False
             stream = client.chat.completions.create(
                 model=target_model,
                 messages=[{"role": "user", "content": prompt}],
@@ -936,7 +1029,24 @@ class RAGPipeline:
             for chunk in stream:
                 delta = getattr(getattr(chunk.choices[0], "delta", None), "content", None)
                 if delta:
+                    if not first_token_emitted:
+                        first_token_emitted = True
+                        _trace_event(
+                            self.settings,
+                            "ask_stream_first_token",
+                            {"q_hash": q_hash, "ms_to_first_token": int((time.perf_counter() - t_llm0) * 1000)},
+                        )
                     yield delta
+            _trace_event(
+                self.settings,
+                "ask_stream_done",
+                {
+                    "q_hash": q_hash,
+                    "ms_total": int((time.perf_counter() - t0) * 1000),
+                    "ms_stream": int((time.perf_counter() - t_llm0) * 1000),
+                    "sources": len(recs),
+                },
+            )
 
         return _gen(), recs
 

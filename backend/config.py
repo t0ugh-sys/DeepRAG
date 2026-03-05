@@ -105,6 +105,7 @@ class Settings:
     query_expand_enabled: bool | None = None
     bm25_require_complete_corpus: bool | None = None
     prompt_show_scores: bool | None = None
+    trace_enabled: bool | None = None
 
     def __post_init__(self) -> None:
         self.docs_dir = self.docs_dir or os.getenv('RAG_DOCS_DIR', 'data/docs')
@@ -193,6 +194,9 @@ class Settings:
 
         if self.prompt_show_scores is None:
             self.prompt_show_scores = os.getenv('RAG_PROMPT_SHOW_SCORES', 'false').lower() in {'1', 'true', 'yes'}
+
+        if self.trace_enabled is None:
+            self.trace_enabled = os.getenv('RAG_TRACE', 'false').lower() in {'1', 'true', 'yes'}
 
         if os.getenv('RAG_API_KEY_REQUIRED') is not None:
             self.api_key_required = os.getenv('RAG_API_KEY_REQUIRED', 'false').lower() in {'1', 'true', 'yes'}
