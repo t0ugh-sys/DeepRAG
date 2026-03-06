@@ -75,8 +75,10 @@ class Settings:
     namespace_whitelist: str | None = None
     api_key_namespace: str | None = None
     api_key: str | None = None
+    read_api_keys: str | None = None
     api_key_required: bool | None = None
     admin_api_key: str | None = None
+    admin_api_keys: str | None = None
     admin_api_key_required: bool | None = None
     admin_api_key_fallback_to_api_key: bool | None = None
 
@@ -157,7 +159,9 @@ class Settings:
         self.namespace_whitelist = self.namespace_whitelist or os.getenv('RAG_NAMESPACE_WHITELIST')
         self.api_key_namespace = self.api_key_namespace or os.getenv('RAG_API_KEY_NAMESPACE')
         self.api_key = self.api_key or os.getenv('RAG_API_KEY')
+        self.read_api_keys = self.read_api_keys or os.getenv('RAG_READ_API_KEYS')
         self.admin_api_key = self.admin_api_key or os.getenv('RAG_ADMIN_API_KEY')
+        self.admin_api_keys = self.admin_api_keys or os.getenv('RAG_ADMIN_API_KEYS')
 
         self.cors_allow_origins = self.cors_allow_origins or os.getenv(
             'RAG_CORS_ALLOW_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173'

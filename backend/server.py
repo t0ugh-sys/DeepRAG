@@ -227,14 +227,11 @@ class AskResponse(BaseModel):
 def _require_api_key(x_api_key: str | None = None) -> None:
     if not settings.api_key_required:
         return
-    if not settings.api_key:
+    read_keys = _collect_read_keys()
+    if not read_keys:
         raise HTTPException(status_code=500, detail="API key required but not configured")
-    key = x_api_key
-    if not key:
-        request = get_current_request()
-        if request is not None:
-            key = request.headers.get("X-API-Key") or request.headers.get("x-api-key")
-    if key != settings.api_key:
+    key = _extract_request_api_key(x_api_key)
+    if key not in read_keys:
         raise HTTPException(status_code=401, detail='Unauthorized')
 
 
@@ -250,16 +247,43 @@ def _require_admin_api_key(x_api_key: str | None = None) -> None:
         if settings.admin_api_key_fallback_to_api_key:
             _require_api_key(x_api_key)
         return
-    if not settings.admin_api_key:
+    admin_keys = _collect_admin_keys()
+    if not admin_keys:
         raise HTTPException(status_code=500, detail="Admin API key required but not configured")
 
-    key = x_api_key
-    if not key:
-        request = get_current_request()
-        if request is not None:
-            key = request.headers.get("X-API-Key") or request.headers.get("x-api-key")
-    if key != settings.admin_api_key:
+    key = _extract_request_api_key(x_api_key)
+    if key not in admin_keys:
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def _parse_keys(raw: str | None) -> set[str]:
+    if not raw:
+        return set()
+    return {token.strip() for token in raw.split(",") if token.strip()}
+
+
+def _collect_admin_keys() -> set[str]:
+    keys = _parse_keys(settings.admin_api_keys)
+    if settings.admin_api_key:
+        keys.add(settings.admin_api_key)
+    return keys
+
+
+def _collect_read_keys() -> set[str]:
+    keys = _parse_keys(settings.read_api_keys)
+    if settings.api_key:
+        keys.add(settings.api_key)
+    keys.update(_collect_admin_keys())
+    return keys
+
+
+def _extract_request_api_key(x_api_key: str | None = None) -> str | None:
+    if x_api_key:
+        return x_api_key
+    request = get_current_request()
+    if request is None:
+        return None
+    return request.headers.get("X-API-Key") or request.headers.get("x-api-key")
 
 
 def _apply_backend_headers(response: Response, local: "RAGPipeline", namespace: str) -> None:
