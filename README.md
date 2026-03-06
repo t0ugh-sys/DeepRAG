@@ -147,6 +147,7 @@ RAG_TRACE=false  # 可观测性：输出检索链路 trace 日志（建议排障
 RAG_AUTO_INGEST_ON_STARTUP=false  # 默认关闭：避免冷启动阻塞与误入库（需要时手动执行入库/建索引）
 RAG_DISABLE_LEGACY_ROUTES=false  # 默认保留历史路径兼容；设为 true 后仅允许 /v1 与 /admin
 RAG_LEGACY_ROUTES_SUNSET_DATE=2026-12-31  # 历史路径下线目标日期（用于响应头提示）
+RAG_AUDIT_LOG_ENABLED=true  # 审计日志开关：记录管理/写接口操作（脱敏 key + request_id + namespace）
 
 # 联网搜索（可选）
 RAG_WEB_SEARCH_ENABLED=false
@@ -334,6 +335,10 @@ python -m backend.eval_matrix_cli \
 管理员鉴权策略：
 - 默认 `RAG_ADMIN_API_KEY_FALLBACK_TO_API_KEY=false`，`admin` 接口不会自动退化到普通 API key。
 - 仅在历史兼容迁移期可开启 `RAG_ADMIN_API_KEY_FALLBACK_TO_API_KEY=true`。
+
+审计日志：
+- 开启 `RAG_AUDIT_LOG_ENABLED=true` 后，会为管理/写接口输出 `audit ...` 日志（包含 request_id、method、path、status、namespace、actor_key 哈希前缀）。
+- 审计日志不记录原始 API key 与请求正文，默认写入 `logs/rag.log`（若文件不可写则仅输出控制台）。
 
 路径与命名空间：
 - 所有 `path` 参数会做规范化并拒绝 `..`、绝对路径/盘符等输入。

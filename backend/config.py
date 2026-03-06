@@ -109,6 +109,7 @@ class Settings:
     prompt_show_scores: bool | None = None
     trace_enabled: bool | None = None
     auto_ingest_on_startup: bool | None = None
+    audit_log_enabled: bool | None = None
     disable_legacy_routes: bool | None = None
     legacy_routes_sunset_date: str | None = None
 
@@ -206,6 +207,9 @@ class Settings:
         if self.auto_ingest_on_startup is None:
             # Default to false: avoid slow/blocking cold starts and accidental ingestion in production.
             self.auto_ingest_on_startup = os.getenv('RAG_AUTO_INGEST_ON_STARTUP', 'false').lower() in {'1', 'true', 'yes'}
+
+        if self.audit_log_enabled is None:
+            self.audit_log_enabled = os.getenv('RAG_AUDIT_LOG_ENABLED', 'true').lower() in {'1', 'true', 'yes'}
 
         if self.disable_legacy_routes is None:
             self.disable_legacy_routes = os.getenv('RAG_DISABLE_LEGACY_ROUTES', 'false').lower() in {'1', 'true', 'yes'}

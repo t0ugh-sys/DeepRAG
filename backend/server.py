@@ -17,7 +17,12 @@ from pydantic import BaseModel
 from backend.config import Settings
 from backend.rag_types import RetrievedChunk
 from backend.utils.logger import logger
-from backend.utils.middleware import RequestLoggingMiddleware, get_current_request, get_current_request_id
+from backend.utils.middleware import (
+    AuditLoggingMiddleware,
+    RequestLoggingMiddleware,
+    get_current_request,
+    get_current_request_id,
+)
 from backend.utils.responses import success_response, error_response
 from backend.utils.cache import query_cache
 from backend.document_manager import get_document_manager
@@ -117,6 +122,7 @@ app = FastAPI(
 )
 
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(AuditLoggingMiddleware, enabled=bool(getattr(settings, "audit_log_enabled", True)))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,  # Vite dev

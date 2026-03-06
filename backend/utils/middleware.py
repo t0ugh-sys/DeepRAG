@@ -1,4 +1,5 @@
 """Middleware: request logging and request context."""
+import hashlib
 import time
 import uuid
 from contextvars import ContextVar
@@ -11,6 +12,19 @@ from backend.utils.logger import logger
 
 _request_var: ContextVar[Request | None] = ContextVar("request_var", default=None)
 _request_id_var: ContextVar[str | None] = ContextVar("request_id_var", default=None)
+_AUDIT_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+_AUDIT_PATH_PREFIXES = (
+    "/admin/",
+    "/docs",
+    "/import",
+    "/namespaces",
+    "/cache/clear",
+    "/metrics/export",
+    "/metrics/clear",
+    "/documents/metadata",
+    "/documents/",
+    "/conversations/",
+)
 
 
 def get_current_request() -> Request | None:
@@ -18,6 +32,19 @@ def get_current_request() -> Request | None:
 
 def get_current_request_id() -> str | None:
     return _request_id_var.get()
+
+
+def _is_audit_target(method: str, path: str) -> bool:
+    if method.upper() not in _AUDIT_METHODS:
+        return False
+    return any(path.startswith(prefix) for prefix in _AUDIT_PATH_PREFIXES)
+
+
+def _mask_api_key(api_key: str | None) -> str:
+    if not api_key:
+        return "none"
+    digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+    return digest[:12]
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -54,3 +81,38 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         finally:
             _request_var.reset(token)
             _request_id_var.reset(request_id_token)
+
+
+class AuditLoggingMiddleware(BaseHTTPMiddleware):
+    """Audit logging middleware for write/admin endpoints."""
+
+    def __init__(self, app, enabled: bool = True):  # type: ignore[override]
+        super().__init__(app)
+        self.enabled = enabled
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        if not self.enabled:
+            return await call_next(request)
+
+        method = request.method.upper()
+        path = request.url.path
+        if not _is_audit_target(method, path):
+            return await call_next(request)
+
+        start_time = time.time()
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        request_id = get_current_request_id() or "-"
+        namespace = request.query_params.get("namespace") or "-"
+        actor_key = _mask_api_key(request.headers.get("X-API-Key") or request.headers.get("x-api-key"))
+        logger.info(
+            "audit request_id=%s method=%s path=%s status=%s namespace=%s actor_key=%s elapsed_ms=%d",
+            request_id,
+            method,
+            path,
+            response.status_code,
+            namespace,
+            actor_key,
+            int(process_time * 1000),
+        )
+        return response
