@@ -427,7 +427,7 @@ docker-compose restart
 import requests
 
 response = requests.post(
-    "http://localhost:8000/ask_stream",
+    "http://localhost:8000/v1/ask_stream",
     json={
         "question": "什么是 RAG？",
         "top_k": 8,
@@ -448,7 +448,7 @@ for line in response.iter_lines():
 ### cURL
 
 ```bash
-curl -X POST http://localhost:8000/ask_stream \
+curl -X POST http://localhost:8000/v1/ask_stream \
   -H "Content-Type: application/json" \
   -d '{
     "question": "介绍一下系统功能",
