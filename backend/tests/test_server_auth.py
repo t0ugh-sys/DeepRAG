@@ -15,12 +15,23 @@ def test_require_admin_api_key_when_enabled(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_require_admin_api_key_falls_back_to_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server.settings, "admin_api_key_required", False, raising=False)
+    monkeypatch.setattr(server.settings, "admin_api_key_fallback_to_api_key", True, raising=False)
     monkeypatch.setattr(server.settings, "api_key_required", True, raising=False)
     monkeypatch.setattr(server.settings, "api_key", "k", raising=False)
 
     server._require_admin_api_key("k")
     with pytest.raises(HTTPException):
         server._require_admin_api_key("bad")
+
+
+def test_require_admin_api_key_no_fallback_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server.settings, "admin_api_key_required", False, raising=False)
+    monkeypatch.setattr(server.settings, "admin_api_key_fallback_to_api_key", False, raising=False)
+    monkeypatch.setattr(server.settings, "api_key_required", True, raising=False)
+    monkeypatch.setattr(server.settings, "api_key", "k", raising=False)
+
+    # no-op when admin check disabled and fallback also disabled
+    server._require_admin_api_key(None)
 
 
 def test_resolve_namespace_whitelist_and_api_key_namespace(monkeypatch: pytest.MonkeyPatch) -> None:

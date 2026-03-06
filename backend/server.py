@@ -237,10 +237,12 @@ def _require_admin_api_key(x_api_key: str | None = None) -> None:
     Admin key is used to protect destructive or sensitive endpoints.
 
     Backward-compatibility:
-    - If admin key is not configured/required, falls back to normal API key.
+    - Optional fallback to normal API key can be enabled via
+      RAG_ADMIN_API_KEY_FALLBACK_TO_API_KEY=true.
     """
     if not settings.admin_api_key_required:
-        _require_api_key(x_api_key)
+        if settings.admin_api_key_fallback_to_api_key:
+            _require_api_key(x_api_key)
         return
     if not settings.admin_api_key:
         raise HTTPException(status_code=500, detail="Admin API key required but not configured")
@@ -252,6 +254,18 @@ def _require_admin_api_key(x_api_key: str | None = None) -> None:
             key = request.headers.get("X-API-Key") or request.headers.get("x-api-key")
     if key != settings.admin_api_key:
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def _apply_backend_headers(response: Response, local: "RAGPipeline", namespace: str) -> None:
+    response.headers["X-RAG-Namespace"] = namespace
+    store = getattr(local, "store", None)
+    response.headers["X-RAG-Vector-Backend"] = str(getattr(store, "backend", "unknown"))
+    fallback_from = getattr(store, "fallback_from", None)
+    if fallback_from:
+        response.headers["X-RAG-Vector-Fallback"] = f"{fallback_from}->{getattr(store, 'backend', 'unknown')}"
+        reason = str(getattr(store, "fallback_reason", "") or "").strip()
+        if reason:
+            response.headers["X-RAG-Vector-Fallback-Reason"] = reason[:180]
 
 
 def _resolve_namespace(namespace: str | None) -> str:
@@ -380,8 +394,7 @@ def ask(
         raise HTTPException(status_code=503, detail="Service unavailable / 服务不可用")
     ns = _resolve_namespace(namespace)
     local = _get_pipeline(ns)
-    response.headers["X-RAG-Namespace"] = ns
-    response.headers["X-RAG-Vector-Backend"] = str(getattr(local.store, "backend", "unknown"))
+    _apply_backend_headers(response, local, ns)
     answer, recs = local.ask(req.question, req.top_k, req.rerank_enabled, req.rerank_top_n, req.model)
     sources: List[SourceItem] = []
     for r in recs:
@@ -461,6 +474,7 @@ def healthz() -> JSONResponse:  # type: ignore[override]
             "top_k": pipeline.settings.top_k,
             "vector_backend_config": pipeline.settings.vector_backend,
             "vector_backend_active": active_backend,
+            "vector_backend_fallback_from": getattr(store, "fallback_from", None),
             "bm25_enabled": pipeline.settings.bm25_enabled,
             "reranker_enabled": pipeline.settings.reranker_enabled,
         })
@@ -514,8 +528,7 @@ def ask_stream(req: AskRequest, x_api_key: str | None = None, namespace: str | N
         yield "event: done\ndata: end\n\n"
 
     resp = StreamingResponse(sse(), media_type="text/event-stream")
-    resp.headers["X-RAG-Namespace"] = ns
-    resp.headers["X-RAG-Vector-Backend"] = str(getattr(local.store, "backend", "unknown"))
+    _apply_backend_headers(resp, local, ns)
     return resp
 
 

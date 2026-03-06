@@ -75,6 +75,8 @@ class VectorStore:
         self.collection = None
         self.faiss_index = None
         self.backend = "faiss"
+        self.fallback_from: str | None = None
+        self.fallback_reason: str | None = None
 
         collection_name = f"{settings.milvus_collection}_{self.namespace}"
         if settings.vector_backend in ("auto", "milvus"):
@@ -90,9 +92,11 @@ class VectorStore:
                 self.collection = Collection(collection_name)
                 self.backend = "milvus"
             except Exception as exc:
-                logging.getLogger("rag").debug("Milvus unavailable, fallback to FAISS / Milvus 不可用，回退 FAISS: %s", exc)
+                logging.getLogger("rag").warning("Milvus unavailable, fallback to FAISS / Milvus 不可用，回退 FAISS: %s", exc)
                 self.collection = None
                 self.backend = "faiss"
+                self.fallback_from = "milvus"
+                self.fallback_reason = str(exc)
 
         if self.collection is None:
             faiss_path = os.path.join(os.path.dirname(meta_path), "faiss.index")

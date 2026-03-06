@@ -78,6 +78,7 @@ class Settings:
     api_key_required: bool | None = None
     admin_api_key: str | None = None
     admin_api_key_required: bool | None = None
+    admin_api_key_fallback_to_api_key: bool | None = None
 
     # CORS
     cors_allow_origins: str | None = None
@@ -224,6 +225,13 @@ class Settings:
         elif self.admin_api_key_required is None:
             # If admin key is configured, default to requiring it for admin endpoints.
             self.admin_api_key_required = bool(self.admin_api_key)
+
+        if self.admin_api_key_fallback_to_api_key is None:
+            # Safer default: when admin key check is disabled, do NOT implicitly fallback to regular API key.
+            # Can be re-enabled explicitly for backward compatibility.
+            self.admin_api_key_fallback_to_api_key = os.getenv(
+                'RAG_ADMIN_API_KEY_FALLBACK_TO_API_KEY', 'false'
+            ).lower() in {'1', 'true', 'yes'}
 
         if self.enforce_namespace_path_prefix is None:
             self.enforce_namespace_path_prefix = os.getenv('RAG_ENFORCE_NAMESPACE_PATH_PREFIX', 'false').lower() in {'1', 'true', 'yes'}

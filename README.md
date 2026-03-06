@@ -65,6 +65,7 @@
 
 排障建议：
 - 先看响应头 `X-Request-Id`，再查后端日志同 request_id 的检索/重排过程。
+- 同时检查 `X-RAG-Vector-Backend` 与 `X-RAG-Vector-Fallback`，确认是否发生 Milvus→FAISS 回退。
 - 如果效果波动：先固定模型与检索参数（`RAG_*`）再逐项开关（BM25/MMR/Rerank/改写）。
 - 如需更细的排查信息：设置 `RAG_TRACE=true`，将输出每次请求的检索/重排/提示词构建/LLM 耗时与候选数量（不记录原始问题，仅记录 hash）。
 
@@ -161,6 +162,7 @@ RAG_API_KEY_REQUIRED=false  # 是否强制鉴权（true/false）
 # 管理员接口（强烈建议公网部署开启）
 RAG_ADMIN_API_KEY=
 RAG_ADMIN_API_KEY_REQUIRED=true
+RAG_ADMIN_API_KEY_FALLBACK_TO_API_KEY=false  # 默认 false，更严格；仅兼容迁移时才建议开启
 
 # 路径/命名空间安全（可选，建议多租户开启）
 # 开启后文档会以 `<namespace>/<path>` 作为逻辑 key 存储，避免跨命名空间误读/误删
@@ -328,6 +330,10 @@ python -m backend.eval_matrix_cli \
 - `POST /cache/clear`
 - `POST /metrics/export`, `POST /metrics/clear`
 - `POST /documents/metadata`, `POST /documents/{path}/tags`, `DELETE /documents/{path}/tags`
+
+管理员鉴权策略：
+- 默认 `RAG_ADMIN_API_KEY_FALLBACK_TO_API_KEY=false`，`admin` 接口不会自动退化到普通 API key。
+- 仅在历史兼容迁移期可开启 `RAG_ADMIN_API_KEY_FALLBACK_TO_API_KEY=true`。
 
 路径与命名空间：
 - 所有 `path` 参数会做规范化并拒绝 `..`、绝对路径/盘符等输入。
