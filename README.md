@@ -1,6 +1,6 @@
 ﻿# DeepRAG - 企业级 RAG 知识库系统
 
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/Python-3.10--3.11-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-green.svg)](https://fastapi.tiangolo.com/)
 [![Vue](https://img.shields.io/badge/Vue-3.5+-brightgreen.svg)](https://vuejs.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -98,6 +98,21 @@ pip install -r backend/requirements.txt
 cd frontend
 npm install
 ```
+
+文档解析依赖与平台差异（建议统一版本）：
+
+| 能力 | Python 依赖 | 系统依赖 | 备注 |
+|---|---|---|---|
+| PDF 文本解析 | `pdfplumber`, `pdfminer.six` | 无必需 | `pdfplumber` 失败会回退 `pdfminer` |
+| PDF 表格抽取 | `pdfplumber` | 无必需 | 复杂扫描件表格可能抽取不完整 |
+| DOCX 解析 | `python-docx` | 无必需 | 保留段落与表格内容 |
+| XLSX 解析 | `openpyxl` | 无必需 | 按 sheet 展开为文本 |
+| OCR（可选） | `pytesseract`, `Pillow` | `tesseract` 可执行程序 | 缺失时仅跳过 OCR，不影响文本型文档摄取 |
+
+可复现建议：
+- 锁定 Python `3.10–3.11`，并固定 `backend/requirements.txt` 版本。
+- 生产环境优先使用 Docker 镜像，避免本机依赖差异导致解析结果漂移。
+- 如需精确页码引用，建议固定解析器版本并对核心文档做回归对比。
 
 ### 2. 配置环境变量
 
@@ -211,7 +226,38 @@ python -m backend.eval_cli --cases backend/eval_cases.example.json --mode retrie
 python -m backend.eval_cli --cases backend/eval_cases.example.json --mode benchmark --top_k 10 --out data/evaluation/benchmark.txt
 ```
 
+批量实验矩阵（自动对比不同检索参数）：
+
+```bash
+python -m backend.eval_matrix_cli \
+  --cases backend/eval_cases.example.json \
+  --matrix backend/eval_matrix.example.json \
+  --mode retrieval \
+  --top_k 10 \
+  --out data/evaluation/matrix_report.json
+```
+
 ### 主要端点
+
+稳定端点（建议新接入优先使用）：
+- `POST /v1/ask`
+- `POST /v1/ask_stream`
+- `GET /v1/models`
+- `GET /v1/healthz`
+- `GET /v1/docs/paths`
+- `GET /v1/docs/preview?path=...`
+- `GET /v1/export?path=...`
+
+管理端点（需 admin key）：
+- `POST /admin/docs`, `DELETE /admin/docs`
+- `POST /admin/import`
+- `POST /admin/namespaces/create`, `POST /admin/namespaces/clear`, `DELETE /admin/namespaces`
+- `POST /admin/cache/clear`
+- `POST /admin/metrics/export`, `POST /admin/metrics/clear`
+- `POST /admin/documents/metadata`
+- `POST /admin/documents/{path}/tags`, `DELETE /admin/documents/{path}/tags`
+
+历史路径继续保留兼容（如 `/ask`、`/docs` 等），后续会逐步收敛到 `/v1` 与 `/admin`。
 
 **问答相关**
 - `POST /ask` - 基础问答
@@ -282,17 +328,20 @@ python -m backend.eval_cli --cases backend/eval_cases.example.json --mode benchm
 - 建议多租户场景开启 `RAG_ENFORCE_NAMESPACE_PATH_PREFIX=true`，使文档以 `<namespace>/<path>` 作为逻辑 key 存储。
 
 **检索优化**
+- 说明：以下接口用于实验/调参，建议视为 Experimental API。
 - `POST /retrieval/analyze` - 分析检索质量并提供优化建议
 - `POST /retrieval/suggest_weights` - 根据查询类型建议最佳权重
 - `POST /retrieval/grid_search` - 网格搜索最佳权重组合
 - `POST /retrieval/compare_strategies` - 比较不同检索策略效果
 
 **查询意图识别**
+- 说明：以下接口用于实验/调参，建议视为 Experimental API。
 - `POST /query/analyze_intent` - 分析查询意图并提供优化建议
 - `POST /query/smart_search` - 基于意图识别的智能检索
 - `POST /query/batch_analyze` - 批量分析查询意图
 
 **评估测试**
+- 说明：以下接口用于离线评估流程，建议视为 Experimental API。
 - `POST /evaluation/run_benchmark` - 运行基准测试
 - `POST /evaluation/test_retrieval` - 测试检索质量
 - `POST /evaluation/test_answer` - 测试答案质量
@@ -300,6 +349,7 @@ python -m backend.eval_cli --cases backend/eval_cases.example.json --mode benchm
 - `GET /evaluation/load_test_cases` - 加载测试用例
 
 **知识图谱**
+- 说明：以下接口用于知识图谱实验能力，建议视为 Experimental API。
 - `POST /kg/build` - 构建知识图谱
 - `GET /kg/statistics` - 获取图谱统计信息
 - `GET /kg/entity/{name}` - 获取实体信息

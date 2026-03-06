@@ -1,0 +1,27 @@
+[
+  {
+    "name": "balanced",
+    "bm25_enabled": true,
+    "vec_weight": 0.6,
+    "bm25_weight": 0.4,
+    "mmr_lambda": 0.7,
+    "reranker_enabled": false
+  },
+  {
+    "name": "vector_heavy",
+    "bm25_enabled": true,
+    "vec_weight": 0.8,
+    "bm25_weight": 0.2,
+    "mmr_lambda": 0.7,
+    "reranker_enabled": false
+  },
+  {
+    "name": "rerank_focus",
+    "bm25_enabled": true,
+    "vec_weight": 0.6,
+    "bm25_weight": 0.4,
+    "mmr_lambda": 0.7,
+    "reranker_enabled": true,
+    "reranker_top_n": 6
+  }
+]

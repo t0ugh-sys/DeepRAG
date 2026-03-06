@@ -261,6 +261,7 @@ def _create_collection(ns: str) -> None:
 
 
 @app.post("/namespaces/create")
+@app.post("/admin/namespaces/create")
 def ns_create(namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_admin_api_key(x_api_key)
     ns = _resolve_namespace(namespace)
@@ -272,6 +273,7 @@ def ns_create(namespace: str | None = None, x_api_key: str | None = None) -> JSO
 
 
 @app.post("/namespaces/clear")
+@app.post("/admin/namespaces/clear")
 def ns_clear(namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_admin_api_key(x_api_key)
     ns = _resolve_namespace(namespace)
@@ -289,6 +291,7 @@ def ns_clear(namespace: str | None = None, x_api_key: str | None = None) -> JSON
 
 
 @app.delete("/namespaces")
+@app.delete("/admin/namespaces")
 def ns_delete(namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_admin_api_key(x_api_key)
     ns = _resolve_namespace(namespace)
@@ -305,6 +308,7 @@ def ns_delete(namespace: str | None = None, x_api_key: str | None = None) -> JSO
 
 
 @app.post("/ask", response_model=AskResponse)
+@app.post("/v1/ask", response_model=AskResponse)
 def ask(
     req: AskRequest, response: Response, x_api_key: str | None = None, namespace: str | None = None
 ) -> AskResponse:  # type: ignore[override]
@@ -332,6 +336,7 @@ def ask(
 
 
 @app.get("/models")
+@app.get("/v1/models")
 def get_available_models() -> JSONResponse:  # type: ignore[override]
     models = settings.available_models.split(",")
     return JSONResponse({
@@ -342,6 +347,7 @@ def get_available_models() -> JSONResponse:  # type: ignore[override]
 
 
 @app.get("/healthz")
+@app.get("/v1/healthz")
 def healthz() -> JSONResponse:  # type: ignore[override]
     ok = True
     details: Dict[str, Any] = {
@@ -407,6 +413,7 @@ def healthz() -> JSONResponse:  # type: ignore[override]
 
 
 @app.post("/ask_stream")
+@app.post("/v1/ask_stream")
 def ask_stream(req: AskRequest, x_api_key: str | None = None, namespace: str | None = None):  # type: ignore[override]
     _require_api_key(x_api_key)
     if pipeline is None:
@@ -802,6 +809,7 @@ def visualize_chunks(req: VisualizeChunksRequest, x_api_key: str | None = None, 
 
 
 @app.get("/docs/preview")
+@app.get("/v1/docs/preview")
 def preview_document_chunks(path: str, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
     _require_api_key(x_api_key)
     if pipeline is None:
@@ -846,6 +854,7 @@ class UpsertDocRequest(_BaseModel):
 
 
 @app.post("/docs")
+@app.post("/admin/docs")
 async def upsert_doc(
     request: Request,
     req: UpsertDocRequest | None = None, 
@@ -918,6 +927,7 @@ async def upsert_doc(
 
 
 @app.delete("/docs")
+@app.delete("/admin/docs")
 def delete_doc(path: str, x_api_key: str | None = None, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_admin_api_key(x_api_key)
     if pipeline is None:
@@ -934,6 +944,7 @@ def delete_doc(path: str, x_api_key: str | None = None, namespace: str | None = 
 
 
 @app.get("/docs/paths")
+@app.get("/v1/docs/paths")
 def list_doc_paths(limit: int = 1000, namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_api_key(x_api_key)
     if pipeline is None:
@@ -945,6 +956,7 @@ def list_doc_paths(limit: int = 1000, namespace: str | None = None, x_api_key: s
 
 
 @app.get("/export")
+@app.get("/v1/export")
 def export_by_path(path: str, namespace: str | None = None, x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_api_key(x_api_key)
     if pipeline is None:
@@ -980,6 +992,7 @@ def export_by_path(path: str, namespace: str | None = None, x_api_key: str | Non
 
 
 @app.post("/import")
+@app.post("/admin/import")
 def import_chunks(payload: Dict[str, Any], x_api_key: str | None = None, namespace: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_admin_api_key(x_api_key)
     if pipeline is None:
@@ -1016,6 +1029,7 @@ def cache_stats(x_api_key: str | None = None) -> JSONResponse:  # type: ignore[o
 
 
 @app.post("/cache/clear")
+@app.post("/admin/cache/clear")
 def cache_clear(x_api_key: str | None = None) -> JSONResponse:  # type: ignore[override]
     _require_admin_api_key(x_api_key)
     query_cache.clear()
@@ -1128,6 +1142,7 @@ def get_time_series(interval_seconds: int = 60, x_api_key: str | None = None) ->
 
 
 @app.post("/metrics/export")
+@app.post("/admin/metrics/export")
 def export_metrics(filepath: str = "data/metrics/export.json", x_api_key: str | None = None) -> Dict[str, Any]:
     _require_admin_api_key(x_api_key)
     monitor = get_monitor()
@@ -1142,6 +1157,7 @@ def export_metrics(filepath: str = "data/metrics/export.json", x_api_key: str | 
 
 
 @app.post("/metrics/clear")
+@app.post("/admin/metrics/clear")
 def clear_metrics(x_api_key: str | None = None) -> Dict[str, Any]:
     _require_admin_api_key(x_api_key)
     monitor = get_monitor()
@@ -1162,6 +1178,7 @@ class UpdateDocumentRequest(BaseModel):
 
 
 @app.post("/documents/metadata")
+@app.post("/admin/documents/metadata")
 def update_document_metadata(req: UpdateDocumentRequest, x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
     _require_admin_api_key(x_api_key)
     
@@ -1274,6 +1291,7 @@ def get_document_statistics(x_api_key: str | None = None) -> Dict[str, Any]:
 
 
 @app.post("/documents/{path:path}/tags")
+@app.post("/admin/documents/{path:path}/tags")
 def add_document_tags(path: str, tags: List[str], x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
     _require_admin_api_key(x_api_key)
     
@@ -1291,6 +1309,7 @@ def add_document_tags(path: str, tags: List[str], x_api_key: str | None = None, 
 
 
 @app.delete("/documents/{path:path}/tags")
+@app.delete("/admin/documents/{path:path}/tags")
 def remove_document_tags(path: str, tags: List[str], x_api_key: str | None = None, namespace: str | None = None) -> Dict[str, Any]:
     _require_admin_api_key(x_api_key)
     
