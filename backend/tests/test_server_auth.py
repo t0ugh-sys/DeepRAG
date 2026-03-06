@@ -63,9 +63,25 @@ def test_resolve_namespace_whitelist_and_api_key_namespace(monkeypatch: pytest.M
     monkeypatch.setattr(server.settings, "default_namespace", "default", raising=False)
     monkeypatch.setattr(server.settings, "namespace_whitelist", "a,b", raising=False)
     monkeypatch.setattr(server.settings, "api_key_namespace", "a", raising=False)
+    monkeypatch.setattr(server.settings, "read_key_namespaces", None, raising=False)
+    monkeypatch.setattr(server.settings, "admin_key_namespaces", None, raising=False)
 
     assert server._resolve_namespace("a") == "a"
     with pytest.raises(HTTPException):
         server._resolve_namespace("b")
     with pytest.raises(HTTPException):
         server._resolve_namespace("c")
+
+
+def test_resolve_namespace_with_key_namespace_map(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server.settings, "default_namespace", "default", raising=False)
+    monkeypatch.setattr(server.settings, "namespace_whitelist", None, raising=False)
+    monkeypatch.setattr(server.settings, "api_key_namespace", None, raising=False)
+    monkeypatch.setattr(server.settings, "read_key_namespaces", "read1=a|b;read2=c", raising=False)
+    monkeypatch.setattr(server.settings, "admin_key_namespaces", "admin1=a|c", raising=False)
+
+    assert server._resolve_namespace("a", "read1") == "a"
+    assert server._resolve_namespace("c", "read2") == "c"
+    assert server._resolve_namespace("c", "admin1") == "c"
+    with pytest.raises(HTTPException):
+        server._resolve_namespace("c", "read1")

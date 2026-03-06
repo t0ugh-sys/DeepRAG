@@ -159,11 +159,13 @@ RAG_NAMESPACE_WHITELIST=default  # 允许的命名空间（逗号分隔，可选
 RAG_API_KEY_NAMESPACE=default  # API key 绑定命名空间（可选）
 RAG_API_KEY=  # 可选，设置后需请求头 X-API-Key
 RAG_READ_API_KEYS=  # 可选，读权限 key 列表（逗号分隔）；与 RAG_API_KEY 兼容
+RAG_READ_KEY_NAMESPACES=  # 可选，读 key 的命名空间授权映射：key1=nsA|nsB;key2=nsC
 RAG_API_KEY_REQUIRED=false  # 是否强制鉴权（true/false）
 
 # 管理员接口（强烈建议公网部署开启）
 RAG_ADMIN_API_KEY=
 RAG_ADMIN_API_KEYS=  # 可选，管理员 key 列表（逗号分隔）；与 RAG_ADMIN_API_KEY 兼容
+RAG_ADMIN_KEY_NAMESPACES=  # 可选，管理员 key 的命名空间授权映射：adm1=nsA|nsB
 RAG_ADMIN_API_KEY_REQUIRED=true
 RAG_ADMIN_API_KEY_FALLBACK_TO_API_KEY=false  # 默认 false，更严格；仅兼容迁移时才建议开启
 
@@ -342,6 +344,7 @@ RBAC（第一阶段）：
 - 通过 `RAG_READ_API_KEYS` 与 `RAG_ADMIN_API_KEYS` 实现角色级 key 管理（逗号分隔）。
 - `read` 接口接受 read/admin key；`admin` 接口仅接受 admin key。
 - 单 key 变量（`RAG_API_KEY` / `RAG_ADMIN_API_KEY`）仍兼容，可与多 key 变量混用。
+- 支持 namespace 级授权映射：`RAG_READ_KEY_NAMESPACES` / `RAG_ADMIN_KEY_NAMESPACES`。
 
 审计日志：
 - 开启 `RAG_AUDIT_LOG_ENABLED=true` 后，会为管理/写接口输出 `audit ...` 日志（包含 request_id、method、path、status、namespace、actor_key 哈希前缀）。

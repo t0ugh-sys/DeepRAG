@@ -262,6 +262,25 @@ def _parse_keys(raw: str | None) -> set[str]:
     return {token.strip() for token in raw.split(",") if token.strip()}
 
 
+def _parse_key_namespace_map(raw: str | None) -> Dict[str, set[str]]:
+    if not raw:
+        return {}
+    mapping: Dict[str, set[str]] = {}
+    normalized = raw.replace(",", ";")
+    for entry in normalized.split(";"):
+        item = entry.strip()
+        if not item or "=" not in item:
+            continue
+        key, namespaces = item.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        allowed = {ns.strip() for ns in namespaces.split("|") if ns.strip()}
+        if allowed:
+            mapping[key] = allowed
+    return mapping
+
+
 def _collect_admin_keys() -> set[str]:
     keys = _parse_keys(settings.admin_api_keys)
     if settings.admin_api_key:
@@ -298,12 +317,27 @@ def _apply_backend_headers(response: Response, local: "RAGPipeline", namespace: 
             response.headers["X-RAG-Vector-Fallback-Reason"] = reason[:180]
 
 
-def _resolve_namespace(namespace: str | None) -> str:
+def _resolve_namespace(namespace: str | None, x_api_key: str | None = None) -> str:
     ns = namespace or settings.default_namespace
     if settings.namespace_whitelist:
         allowed = [n.strip() for n in settings.namespace_whitelist.split(",") if n.strip()]
         if allowed and ns not in allowed:
             raise HTTPException(status_code=403, detail="Namespace not allowed")
+    key = _extract_request_api_key(x_api_key)
+    if key:
+        read_map = _parse_key_namespace_map(getattr(settings, "read_key_namespaces", None))
+        admin_map = _parse_key_namespace_map(getattr(settings, "admin_key_namespaces", None))
+        if read_map or admin_map:
+            allowed_for_key: set[str] = set()
+            key_mapped = False
+            if key in read_map:
+                allowed_for_key.update(read_map[key])
+                key_mapped = True
+            if key in admin_map:
+                allowed_for_key.update(admin_map[key])
+                key_mapped = True
+            if key_mapped and ns not in allowed_for_key:
+                raise HTTPException(status_code=403, detail="Namespace not allowed for this API key")
     if settings.api_key_namespace:
         if ns != settings.api_key_namespace:
             raise HTTPException(status_code=403, detail="Namespace not allowed for this API key")
