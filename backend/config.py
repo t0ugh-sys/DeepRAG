@@ -1,6 +1,7 @@
 import os
 import logging
 from dataclasses import dataclass
+from datetime import date
 
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,8 @@ class Settings:
     prompt_show_scores: bool | None = None
     trace_enabled: bool | None = None
     auto_ingest_on_startup: bool | None = None
+    disable_legacy_routes: bool | None = None
+    legacy_routes_sunset_date: str | None = None
 
     def __post_init__(self) -> None:
         self.docs_dir = self.docs_dir or os.getenv('RAG_DOCS_DIR', 'data/docs')
@@ -202,6 +205,14 @@ class Settings:
         if self.auto_ingest_on_startup is None:
             # Default to false: avoid slow/blocking cold starts and accidental ingestion in production.
             self.auto_ingest_on_startup = os.getenv('RAG_AUTO_INGEST_ON_STARTUP', 'false').lower() in {'1', 'true', 'yes'}
+
+        if self.disable_legacy_routes is None:
+            self.disable_legacy_routes = os.getenv('RAG_DISABLE_LEGACY_ROUTES', 'false').lower() in {'1', 'true', 'yes'}
+
+        self.legacy_routes_sunset_date = self.legacy_routes_sunset_date or os.getenv(
+            'RAG_LEGACY_ROUTES_SUNSET_DATE',
+            date(2026, 12, 31).isoformat(),
+        )
 
         if os.getenv('RAG_API_KEY_REQUIRED') is not None:
             self.api_key_required = os.getenv('RAG_API_KEY_REQUIRED', 'false').lower() in {'1', 'true', 'yes'}

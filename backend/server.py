@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from typing import List, Any, Dict, Optional, TYPE_CHECKING
 import os
 import time
+import re
 from contextlib import asynccontextmanager
 from threading import Lock
 
@@ -31,6 +34,32 @@ _pipeline_lock = Lock()
 cors_origins = [o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()]
 cors_methods = [m.strip() for m in settings.cors_allow_methods.split(",") if m.strip()]
 cors_headers = [h.strip() for h in settings.cors_allow_headers.split(",") if h.strip()]
+
+
+LEGACY_ROUTE_MAP: Dict[tuple[str, str], str] = {
+    ("POST", "/ask"): "/v1/ask",
+    ("POST", "/ask_stream"): "/v1/ask_stream",
+    ("GET", "/models"): "/v1/models",
+    ("GET", "/healthz"): "/v1/healthz",
+    ("GET", "/docs/paths"): "/v1/docs/paths",
+    ("GET", "/docs/preview"): "/v1/docs/preview",
+    ("GET", "/export"): "/v1/export",
+    ("POST", "/docs"): "/admin/docs",
+    ("DELETE", "/docs"): "/admin/docs",
+    ("POST", "/import"): "/admin/import",
+    ("POST", "/namespaces/create"): "/admin/namespaces/create",
+    ("POST", "/namespaces/clear"): "/admin/namespaces/clear",
+    ("DELETE", "/namespaces"): "/admin/namespaces",
+    ("POST", "/cache/clear"): "/admin/cache/clear",
+    ("POST", "/metrics/export"): "/admin/metrics/export",
+    ("POST", "/metrics/clear"): "/admin/metrics/clear",
+    ("POST", "/documents/metadata"): "/admin/documents/metadata",
+}
+
+LEGACY_ROUTE_PATTERNS: List[tuple[str, re.Pattern[str], str]] = [
+    ("POST", re.compile(r"^/documents/.+/tags$"), "/admin/documents/{path}/tags"),
+    ("DELETE", re.compile(r"^/documents/.+/tags$"), "/admin/documents/{path}/tags"),
+]
 
 
 def _ensure_index_ready() -> None:
@@ -95,6 +124,40 @@ app.add_middleware(
     allow_methods=cors_methods,
     allow_headers=cors_headers,
 )
+
+
+def _legacy_successor_for_request(method: str, path: str) -> str | None:
+    normalized_method = method.upper()
+    successor = LEGACY_ROUTE_MAP.get((normalized_method, path))
+    if successor:
+        return successor
+    for pattern_method, pattern, mapped_successor in LEGACY_ROUTE_PATTERNS:
+        if normalized_method == pattern_method and pattern.match(path):
+            return mapped_successor
+    return None
+
+
+@app.middleware("http")
+async def legacy_route_policy_middleware(request: Request, call_next):  # type: ignore[override]
+    successor = _legacy_successor_for_request(request.method, request.url.path)
+    if successor and settings.disable_legacy_routes:
+        return error_response(
+            error="Legacy route disabled",
+            status_code=410,
+            details={
+                "successor": successor,
+                "sunset_date": settings.legacy_routes_sunset_date,
+                "request_id": get_current_request_id(),
+            },
+        )
+
+    response = await call_next(request)
+    if successor:
+        response.headers["X-API-Legacy"] = "true"
+        response.headers["Deprecation"] = "true"
+        response.headers["Sunset"] = str(settings.legacy_routes_sunset_date or "")
+        response.headers["Link"] = f'<{successor}>; rel="successor-version"'
+    return response
 
 
 @app.exception_handler(HTTPException)

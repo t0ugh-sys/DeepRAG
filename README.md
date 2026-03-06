@@ -144,6 +144,8 @@ RAG_MMR_LAMBDA=0.7
 RAG_RERANKER_ENABLED=false
 RAG_TRACE=false  # 可观测性：输出检索链路 trace 日志（建议排障时开启）
 RAG_AUTO_INGEST_ON_STARTUP=false  # 默认关闭：避免冷启动阻塞与误入库（需要时手动执行入库/建索引）
+RAG_DISABLE_LEGACY_ROUTES=false  # 默认保留历史路径兼容；设为 true 后仅允许 /v1 与 /admin
+RAG_LEGACY_ROUTES_SUNSET_DATE=2026-12-31  # 历史路径下线目标日期（用于响应头提示）
 
 # 联网搜索（可选）
 RAG_WEB_SEARCH_ENABLED=false
@@ -258,6 +260,10 @@ python -m backend.eval_matrix_cli \
 - `POST /admin/documents/{path}/tags`, `DELETE /admin/documents/{path}/tags`
 
 历史路径继续保留兼容（如 `/ask`、`/docs` 等），后续会逐步收敛到 `/v1` 与 `/admin`。
+
+历史路径治理策略：
+- 访问历史路径时，响应头会包含 `Deprecation: true`、`Sunset`、`Link`（指向 successor route）。
+- 如需提前强制收敛，可设置 `RAG_DISABLE_LEGACY_ROUTES=true`，历史路径将返回 `410 Gone`。
 
 **问答相关**
 - `POST /ask` - 基础问答
